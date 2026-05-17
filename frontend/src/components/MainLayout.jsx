@@ -1,0 +1,330 @@
+import React, { useState } from 'react';
+import { Layout, Menu, Button, Typography, Dropdown } from 'antd';
+import { 
+  AppstoreOutlined, 
+  ReadOutlined, 
+  HistoryOutlined, 
+  ContainerOutlined, 
+  FireOutlined,
+  LogoutOutlined,
+  UserOutlined,
+  BlockOutlined,
+  ThunderboltOutlined,
+  TeamOutlined,
+  CrownOutlined,
+  CalendarOutlined,
+  EditOutlined,
+  BookOutlined
+} from '@ant-design/icons';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useLearning } from '../context/LearningContext';
+import { hasMinRole, ROLE_COLORS, ROLE_LABELS } from '../utils/roles';
+import AIChatWidget from './AIChatWidget';
+import UserAvatar from './UserAvatar';
+
+const { Header, Sider, Content } = Layout;
+const { Title, Text } = Typography;
+
+const SidebarIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <rect x="3" y="3" width="18" height="18" rx="4" ry="4" />
+    <line x1="9" y1="3" x2="9" y2="21" />
+  </svg>
+);
+
+const MainLayout = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
+  const { resetLearning, setMode } = useLearning();
+  const [collapsed, setCollapsed] = useState(false);
+  const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+
+  const handleMenuClick = ({ key }) => {
+    resetLearning();
+    if (key === '/home') {
+      navigate('/home');
+    } else {
+      // Map keys to modes
+      const modeMap = {
+        '/chapter-select': 'sequential',
+        '/random-group': 'random-group',
+        '/random-word': 'random-word',
+        '/review': 'review',
+        '/mistake-book': 'mistake-book',
+        '/quiz': 'quiz',
+        '/check-in': 'check-in'
+      };
+      if (modeMap[key]) {
+        setMode(modeMap[key]);
+      }
+      navigate(key);
+    }
+  };
+
+  const menuItems = [
+    {
+      key: '/home',
+      icon: <AppstoreOutlined />,
+      label: '数据看板',
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'learning',
+      label: '学习中心',
+      type: 'group',
+      children: [
+        {
+          key: '/chapter-select',
+          icon: <ReadOutlined />,
+          label: '顺序学习',
+        },
+        {
+          key: '/random-group',
+          icon: <BlockOutlined />,
+          label: '随机分组',
+        },
+        {
+          key: '/random-word',
+          icon: <ThunderboltOutlined />,
+          label: '随机单词',
+        },
+        {
+          key: '/custom-books',
+          icon: <BookOutlined />,
+          label: '自定义词书',
+        },
+      ]
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'advanced',
+      label: '能力提升',
+      type: 'group',
+      children: [
+        {
+          key: '/review',
+          icon: <HistoryOutlined />,
+          label: '智能复习',
+        },
+        {
+          key: '/mistake-book',
+          icon: <ContainerOutlined />,
+          label: '错词本',
+        },
+        {
+          key: '/quiz',
+          icon: <ReadOutlined />, // Using Read as test icon
+          label: '模拟测试',
+        },
+        {
+          key: '/check-in',
+          icon: <FireOutlined />,
+          label: '每日打卡',
+        },
+        {
+          key: '/calendar',
+          icon: <CalendarOutlined />,
+          label: '学习日历',
+        },
+      ]
+    }
+  ];
+
+  if (hasMinRole(user, 'admin')) {
+    menuItems.push(
+      {
+        type: 'divider',
+      },
+      {
+        key: 'admin',
+        label: '管理后台',
+        type: 'group',
+        children: [
+          {
+            key: '/admin/users',
+            icon: <TeamOutlined />,
+            label: '用户管理',
+          },
+          {
+            key: '/admin/content',
+            icon: <EditOutlined />,
+            label: '内容管理',
+          },
+          ...(hasMinRole(user, 'super_admin') ? [
+            {
+              key: '/admin/super',
+              icon: <CrownOutlined />,
+              label: '超级管理',
+            },
+          ] : []),
+        ],
+      }
+    );
+  }
+
+  const userRoleLabel = ROLE_LABELS[user?.role] || '普通用户';
+  const userRoleColor = ROLE_COLORS[user?.role] || '#6b7280';
+
+  const userMenu = {
+    items: [
+      ...(user?.uid ? [{
+        key: 'uid-display',
+        disabled: true,
+        label: <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 12 }}>UID: {user.uid}</Text>,
+      }] : []),
+      {
+        key: 'role-display',
+        disabled: true,
+        label: (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: userRoleColor }} />
+            <Text style={{ fontSize: 13, color: '#374151' }}>{userRoleLabel}</Text>
+          </span>
+        ),
+      },
+      {
+        type: 'divider',
+      },
+      {
+        key: 'profile',
+        icon: <UserOutlined />,
+        label: '个人资料',
+        onClick: () => navigate('/profile'),
+      },
+      {
+        key: 'logout',
+        icon: <LogoutOutlined />,
+        label: '退出登录',
+        onClick: logout,
+      },
+    ],
+  };
+
+  // Determine active route for menu highlighting
+  // Fallback to /home if not matching perfectly
+  let selectedKey = location.pathname;
+  if (selectedKey === '/group-select' || selectedKey === '/word-select') selectedKey = '/chapter-select';
+  if (selectedKey.startsWith('/custom-books')) selectedKey = '/custom-books';
+
+  return (
+    <Layout style={{ height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+      <Sider 
+        trigger={null}
+        theme="light" 
+        collapsible 
+        collapsed={collapsed} 
+        onCollapse={setCollapsed}
+        width={250}
+        style={{
+          height: '100vh',
+          overflow: 'auto',
+          background: 'rgba(255, 255, 255, 0.4)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '4px 0 24px rgba(0,0,0,0.02)',
+          zIndex: 10
+        }}
+      >
+        <div 
+          onMouseEnter={() => setIsHeaderHovered(true)}
+          onMouseLeave={() => setIsHeaderHovered(false)}
+          style={{ 
+            height: 64, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: collapsed ? 'center' : 'space-between',
+            padding: collapsed ? '0' : '0 20px',
+            overflow: 'hidden'
+          }}
+        >
+          {(!collapsed || !isHeaderHovered) && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <img 
+                src="/favicon.png" 
+                alt="Logo" 
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '6px',
+                  boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
+          )}
+          {(!collapsed || isHeaderHovered) && (
+            <Button
+              type="text"
+              icon={<SidebarIcon />}
+              onClick={() => setCollapsed(!collapsed)}
+              style={{
+                width: 36,
+                height: 36,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#6b7280',
+                borderRadius: '8px',
+                flexShrink: 0
+              }}
+            />
+          )}
+        </div>
+        <Menu 
+          theme="light" 
+          mode="inline" 
+          selectedKeys={[selectedKey]} 
+          onClick={handleMenuClick}
+          items={menuItems}
+          style={{ borderRight: 0, background: 'transparent' }}
+        />
+      </Sider>
+      
+      <Layout style={{ height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+        <Header style={{ 
+          padding: '0 32px', 
+          background: 'rgba(255, 255, 255, 0.5)', 
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          boxShadow: '0 4px 30px rgba(0,0,0,0.03)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.5)',
+          zIndex: 9
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Title level={5} style={{ margin: 0, fontWeight: 600, color: '#374151' }}>
+              {menuItems.flatMap(g => g.children || [g]).find(i => i.key === selectedKey)?.label || 'Dashboard'}
+            </Title>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Dropdown menu={userMenu} placement="bottomRight" arrow>
+              <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 10, padding: '4px 12px 4px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.05)' }}>
+                <UserAvatar user={user} size={28} />
+                <Text style={{ fontWeight: 500, color: '#4b5563' }}>{user?.username}</Text>
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+        
+        <Content style={{ 
+          padding: '24px 32px',
+          position: 'relative',
+          overflowY: 'auto'
+        }}>
+          <Outlet />
+          <AIChatWidget />
+        </Content>
+      </Layout>
+    </Layout>
+  );
+};
+
+export default MainLayout;

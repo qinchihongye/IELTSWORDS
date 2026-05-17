@@ -1,0 +1,20 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "reload": false
+  },
+  "database": {
+    "url": "sqlite:///./db/ielts_words_app.db",
+    "source_db": "sqlite:///./db/ielts_words.db"
+  },
+  "jwt": {
+    "algorithm": "HS256",
+    "access_token_expire_hours": 24
+  },
+  "cors": {
+    "origins": [
+      "https://example.com"
+    ]
+  }
+}

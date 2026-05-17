@@ -1,0 +1,285 @@
+/* Learning pages now adapt to MainLayout. Residual viewport/sticky styling removed. */
+.learning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 24px;
+}
+
+.learning-header__main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.learning-back,
+.learning-secondary-action {
+  height: 42px;
+  border-radius: 12px;
+  border-color: rgba(99, 102, 241, 0.2);
+  color: #4b5563;
+  background: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+}
+
+.learning-header__copy {
+  min-width: 0;
+}
+
+.learning-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.learning-title.ant-typography {
+  margin: 6px 0 0;
+  color: #111827;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.learning-subtitle.ant-typography {
+  display: block;
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.learning-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.learning-auto-advance {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.learning-auto-advance__label {
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.learning-auto-advance .ant-switch.ant-switch-checked {
+  background: #6366f1;
+}
+
+.learning-progress-wrap {
+  width: 220px;
+}
+
+.learning-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+
+.learning-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 480px;
+  gap: 24px;
+  align-items: start;
+}
+
+.learning-primary,
+.learning-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+
+
+.learning-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.learning-nav--sequential {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.learning-nav__button {
+  height: 48px;
+  border-radius: 16px;
+  font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #4b5563;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.learning-nav__button--primary {
+  border: none;
+  color: #fff;  /* 保留白色，因为按钮背景是深色渐变 */
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+}
+
+.learning-sidebar-card,
+.study-card,
+.study-status-card,
+.image-gallery-card {
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05) !important;
+}
+
+.learning-sidebar-card,
+.study-card,
+.study-status-card,
+.image-gallery-card {
+  border-radius: 24px !important;
+}
+
+.learning-sidebar-card .ant-card-body {
+  padding: 24px;
+}
+
+.learning-sidebar-card__label {
+  color: #6366f1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.learning-sidebar-card__value {
+  margin-top: 10px;
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.learning-sidebar-card__text {
+  margin: 10px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.study-status-card__body,
+.image-gallery-card__body {
+  padding: 24px;
+}
+
+.modern-image-frame {
+  transition: all 0.3s ease;
+}
+
+.modern-image-frame:hover {
+  transform: scale(1.01);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.15) !important;
+}
+
+.gallery-nav-btn {
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.modern-image-frame:hover .gallery-nav-btn {
+  opacity: 1;
+}
+
+.gallery-nav-btn:hover {
+  background: transparent !important;
+  transform: translateY(-50%) scale(1.2) !important;
+}
+
+/* Make preview modal background completely transparent for an immersive hover effect */
+.image-preview-modal-wrap .ant-modal-content {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.image-preview-modal-wrap .ant-modal-close {
+  color: #fff;
+  top: -40px;
+  right: -40px;
+  font-size: 24px;
+}
+.image-preview-modal-wrap .ant-modal-close:hover {
+  color: #a855f7;
+}
+
+.learning-loading,
+.learning-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+}
+
+.learning-empty {
+  flex-direction: column;
+}
+
+@media (max-width: 1120px) {
+  .learning-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 780px) {
+  .learning-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .learning-header__main,
+  .learning-header__actions,
+  .learning-progress-wrap,
+  .learning-auto-advance {
+    width: 100%;
+  }
+
+  .learning-header__actions {
+    justify-content: stretch;
+  }
+
+  .learning-content {
+    width: min(100% - 20px, 1320px);
+    padding-top: 18px;
+  }
+
+  .learning-nav,
+  .learning-nav--sequential {
+    grid-template-columns: 1fr;
+  }
+  
+  .modern-image-frame {
+    height: 260px;
+  }
+  
+  .modern-image-frame img {
+    height: 260px !important;
+  }
+}

@@ -1,0 +1,23 @@
+[Unit]
+Description=IELTSWORDS FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/ieltswords/backend
+EnvironmentFile=/opt/ieltswords/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ieltswords/.venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=5
+
+# Hardening. Relax these if your server layout requires it.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/ieltswords/db /opt/ieltswords/data/images /opt/ieltswords/data/uploads
+
+[Install]
+WantedBy=multi-user.target

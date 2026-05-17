@@ -1,0 +1,13 @@
+{
+  "server": {
+    "port": 5433
+  },
+  "api": {
+    "baseURL": "http://localhost:5432",
+    "timeout": 10000
+  },
+  "app": {
+    "title": "IELTS单词背诵",
+    "description": "基于配图记忆的雅思单词学习应用"
+  }
+}
