@@ -7,6 +7,28 @@ import AIMarkdownContent from './AIMarkdownContent';
 const { Text } = Typography;
 
 const MODEL_PROVIDER_ORDER = ['OpenAI', 'DeepSeek', 'Anthropic (Claude)', 'Kimi', 'Other models'];
+const AI_DRAWER_WIDTH_KEY = 'ieltswords_ai_drawer_width';
+const AI_DRAWER_DEFAULT_WIDTH = 420;
+const AI_DRAWER_MIN_WIDTH = 360;
+const AI_DRAWER_MAX_WIDTH = 760;
+const AI_DRAWER_MAX_VIEWPORT_RATIO = 1 / 3;
+const AI_DRAWER_DESKTOP_BREAKPOINT = 768;
+const AI_DRAWER_VIEWPORT_GAP = 32;
+
+const getMaxDrawerWidth = (viewportWidth) => {
+  const safeWidth = Number.isFinite(viewportWidth) ? viewportWidth : AI_DRAWER_DEFAULT_WIDTH;
+  const ratioLimitedWidth = Math.floor(safeWidth * AI_DRAWER_MAX_VIEWPORT_RATIO);
+  return Math.max(
+    240,
+    Math.min(AI_DRAWER_MAX_WIDTH, ratioLimitedWidth, safeWidth - AI_DRAWER_VIEWPORT_GAP)
+  );
+};
+
+const clampDrawerWidth = (width, viewportWidth) => {
+  const maxWidth = getMaxDrawerWidth(viewportWidth);
+  const minWidth = Math.min(AI_DRAWER_MIN_WIDTH, maxWidth);
+  return Math.min(Math.max(width, minWidth), maxWidth);
+};
 
 const getModelProvider = (model) => {
   const value = String(model || '').toLowerCase();
@@ -89,9 +111,25 @@ const AIChatWidget = () => {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [expandedReasoningIds, setExpandedReasoningIds] = useState(() => new Set());
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window === 'undefined' ? 1280 : window.innerWidth
+  ));
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return AI_DRAWER_DEFAULT_WIDTH;
+    }
+
+    const savedWidth = Number(window.localStorage.getItem(AI_DRAWER_WIDTH_KEY));
+    return Number.isFinite(savedWidth) && savedWidth > 0
+      ? clampDrawerWidth(savedWidth, window.innerWidth)
+      : AI_DRAWER_DEFAULT_WIDTH;
+  });
+  const [isResizingDrawer, setIsResizingDrawer] = useState(false);
   const scrollRef = useRef(null);
   const reasoningCompletionRef = useRef(new Set());
   const canUseAI = aiSettings.canUseAI;
+  const isDesktop = viewportWidth >= AI_DRAWER_DESKTOP_BREAKPOINT;
+  const activeDrawerWidth = isDesktop ? clampDrawerWidth(drawerWidth, viewportWidth) : '100vw';
 
   const contextShortcuts = useMemo(
     () => chatContext?.shortcuts || [],
@@ -104,6 +142,38 @@ const AIChatWidget = () => {
   );
   const selectedModel = aiSettings.selectedModel || aiSettings.activeModel || '';
   const shouldShowModelBox = Boolean(selectedModel) || modelOptions.length > 0;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const syncViewportWidth = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    syncViewportWidth();
+    window.addEventListener('resize', syncViewportWidth);
+    return () => window.removeEventListener('resize', syncViewportWidth);
+  }, []);
+
+  useEffect(() => {
+    setDrawerWidth((currentWidth) => clampDrawerWidth(currentWidth, viewportWidth));
+  }, [viewportWidth]);
+
+  useEffect(() => {
+    if (!isDesktop && isResizingDrawer) {
+      setIsResizingDrawer(false);
+    }
+  }, [isDesktop, isResizingDrawer]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(AI_DRAWER_WIDTH_KEY, String(Math.round(drawerWidth)));
+  }, [drawerWidth]);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -133,6 +203,39 @@ const AIChatWidget = () => {
       return changed ? next : prev;
     });
   }, [messages]);
+
+  useEffect(() => {
+    if (!isResizingDrawer || !isDesktop || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event) => {
+      const nextWidth = clampDrawerWidth(window.innerWidth - event.clientX, window.innerWidth);
+      setDrawerWidth(nextWidth);
+    };
+
+    const stopResizing = () => {
+      setIsResizingDrawer(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResizing);
+    window.addEventListener('pointercancel', stopResizing);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
+    };
+  }, [isDesktop, isResizingDrawer]);
 
   const handleSend = async () => {
     const trimmed = draft.trim();
@@ -225,6 +328,15 @@ const AIChatWidget = () => {
     }
   };
 
+  const startResizingDrawer = (event) => {
+    if (!isDesktop) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsResizingDrawer(true);
+  };
+
   const placeholder = chatContext?.page === 'quiz'
     ? '比如：先别直接告诉我答案，给我一点提示'
     : chatContext?.page === 'learning'
@@ -254,7 +366,7 @@ const AIChatWidget = () => {
         placement="right"
         open={isOpen}
         onClose={closeDrawer}
-        width="min(420px, 100vw)"
+        width={activeDrawerWidth}
         extra={(
           <Space size={8}>
             <Button
@@ -276,11 +388,48 @@ const AIChatWidget = () => {
         styles={{
           body: {
             padding: 0,
+            position: 'relative',
             background: 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
           },
         }}
       >
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          {isDesktop && (
+            <button
+              type="button"
+              aria-label="拖拽调整 AI 助手宽度"
+              onPointerDown={startResizingDrawer}
+              style={{
+                position: 'absolute',
+                insetInlineStart: 0,
+                top: 0,
+                bottom: 0,
+                width: 16,
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'col-resize',
+                zIndex: 20,
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  insetInlineStart: 7,
+                  top: 24,
+                  bottom: 24,
+                  width: 2,
+                  borderRadius: 999,
+                  background: isResizingDrawer
+                    ? 'rgba(99, 102, 241, 0.5)'
+                    : 'rgba(148, 163, 184, 0.28)',
+                  boxShadow: isResizingDrawer
+                    ? '0 0 0 3px rgba(99, 102, 241, 0.12)'
+                    : 'none',
+                }}
+              />
+            </button>
+          )}
           {contextShortcuts.length > 0 && (
             <div style={{ padding: '16px 16px 10px', borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

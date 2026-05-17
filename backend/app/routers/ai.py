@@ -46,6 +46,9 @@ def build_system_prompt(current_user: models.User, context: dict | None) -> str:
         "输出要实用、清晰，尽量分点，避免空泛鼓励。",
         "回答时优先使用清晰的 Markdown 结构，例如小标题、分点、编号、代码块。",
         "如果输出 Markdown，请严格保留必要的空格与换行，不要把多个标题、列表、代码块、引用或表格挤在同一行。",
+        "小标题请单独占一行，例如：## 记忆技巧。",
+        "强调单词、词组、词根、词缀时，优先使用反引号，例如 `atmosphere`、`atmo`、`sphere`，不要输出不成对的 * 或 **。",
+        "除非明确要做引用说明，不要把普通正文写成 > 引用块。",
         "如果给例句，优先使用如下结构：例句：... 换行 译文：...；必要时再补一行用法：...",
         f"当前用户角色: {role}",
         f"当前页面类型: {page}",
@@ -259,7 +262,10 @@ def extract_text_parts(payload: Any) -> tuple[str, str]:
             (reasoning_parts if forced_reasoning else content_parts).append(text)
 
     consume(payload)
-    return "".join(content_parts).strip(), "".join(reasoning_parts).strip()
+    # Keep chunk-level whitespace intact for streaming responses; otherwise
+    # leading spaces in deltas like " atmosphere" get stripped and English
+    # words collapse together when the frontend appends them incrementally.
+    return "".join(content_parts), "".join(reasoning_parts)
 
 
 def split_tagged_reasoning_text(text: str) -> tuple[str, str]:
