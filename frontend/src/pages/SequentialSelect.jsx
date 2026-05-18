@@ -38,6 +38,22 @@ const isGroupUnlocked = (groups, index) => {
   return isGroupCompleted(groups[index - 1]);
 };
 
+const LAST_POSITION_KEY = 'ieltswords_last_learning_position';
+
+const saveLastPosition = (chapterNo, groupId) => {
+  try {
+    localStorage.setItem(LAST_POSITION_KEY, JSON.stringify({ chapterNo, groupId }));
+  } catch {}
+};
+
+const loadLastPosition = () => {
+  try {
+    const raw = localStorage.getItem(LAST_POSITION_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+};
+
 const SequentialSelect = () => {
   const navigate = useNavigate();
   const {
@@ -57,11 +73,12 @@ const SequentialSelect = () => {
 
   const [chapters, setChapters] = useState([]);
   const [loadingChapters, setLoadingChapters] = useState(true);
-  
+
   // Cache for groups by chapterNo
   const [chapterGroups, setChapterGroups] = useState({});
   const [loadingPanel, setLoadingPanel] = useState(null);
   const [expandedKeys, setExpandedKeys] = useState([]);
+  const [lastPositionRestored, setLastPositionRestored] = useState(false);
   // Refs for each chapter's group list scroll container
   const groupListRefs = React.useRef({});
 
@@ -78,6 +95,7 @@ const SequentialSelect = () => {
 
     setCurrentChapter(chapter);
     setCurrentGroup(group);
+    saveLastPosition(chapter.chapterNo, group.groupId);
     setLoadingWords(true);
 
     try {
@@ -97,12 +115,12 @@ const SequentialSelect = () => {
     setCurrentGroup,
   ]);
 
-  const handleExpand = useCallback(async (rawKey, chapterList = chapters) => {
+  const handleExpand = useCallback(async (rawKey, chapterList = chapters, targetGroupId = null) => {
     const keyStr = Array.isArray(rawKey) ? rawKey[0] : rawKey;
     const keys = keyStr ? [String(keyStr)] : [];
     setExpandedKeys(keys);
     const newKeys = keys.filter(k => !chapterGroups[k]);
-    
+
     if (newKeys.length > 0) {
       const chapterNo = Number(newKeys[0]);
       setLoadingPanel(chapterNo);
@@ -110,12 +128,15 @@ const SequentialSelect = () => {
         const groups = await fetchGroupsByChapter(chapterNo);
         const sortedGroups = sortGroupsByGroupId(groups);
         setChapterGroups(prev => ({ ...prev, [chapterNo]: sortedGroups }));
-        
-        // Auto select first group if nothing is selected
+
+        // Restore last position, or auto-select first group
         if (!currentGroup && sortedGroups.length > 0) {
            const matchedChapter = chapterList.find(c => String(c.chapterNo) === String(chapterNo));
            if (matchedChapter) {
-             void handleGroupSelect(matchedChapter, sortedGroups[0]);
+             const targetGroup = targetGroupId
+               ? sortedGroups.find(g => String(g.groupId) === String(targetGroupId))
+               : null;
+             void handleGroupSelect(matchedChapter, targetGroup || sortedGroups[0]);
            }
         }
       } catch (e) {
@@ -144,15 +165,18 @@ const SequentialSelect = () => {
       setLoadingChapters(false);
 
       if (data.length > 0) {
-        const autoOpenKey = currentChapter ? currentChapter.chapterNo : data[0].chapterNo;
-        await handleExpandRef.current([String(autoOpenKey)], data);
+        const lastPos = lastPositionRestored ? null : loadLastPosition();
+        const autoOpenKey = lastPos?.chapterNo
+          || (currentChapter ? currentChapter.chapterNo : data[0].chapterNo);
+        await handleExpandRef.current([String(autoOpenKey)], data, lastPos?.groupId);
+        if (lastPos) setLastPositionRestored(true);
       }
     };
 
     void loadInit();
 
     return () => { cancelled = true; };
-	  }, [currentChapter, fetchChapters, setMode]);
+	  }, [currentChapter, fetchChapters, setMode, lastPositionRestored]);
 
   // 3. Restore Progress Map if returning to a previously selected group
   useEffect(() => {

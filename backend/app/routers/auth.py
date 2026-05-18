@@ -11,6 +11,7 @@ from ..avatar_storage import (
     delete_uploaded_avatar_file,
     is_vip_only_builtin_avatar,
     save_uploaded_avatar,
+    save_builtin_avatar,
     validate_builtin_avatar_key,
 )
 from .. import schemas, crud, auth

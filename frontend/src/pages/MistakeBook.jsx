@@ -256,7 +256,7 @@ const MistakeBook = () => {
                             style={{ color: '#f59e0b' }}
                           />
                         </div>
-                        <Text style={{ fontSize: '16px', color: '#6b7280' }}>
+                        <Text style={{ fontSize: '16px', color: '#6b7280', whiteSpace: 'pre-line' }}>
                           {word.explanation}
                         </Text>
                       </div>

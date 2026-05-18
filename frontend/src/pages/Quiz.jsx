@@ -394,6 +394,12 @@ const Quiz = () => {
 
       if (snapshot) {
         const nextQuestions = snapshot.questions || [];
+
+        if (nextQuestions.length === 0) {
+          setLoading(false);
+          return;
+        }
+
         const answerByWordId = new Map(
           (snapshot.answers || []).map((item) => [item.word_id, item])
         );
@@ -718,6 +724,26 @@ const Quiz = () => {
                 </div>
               </Card>
             </motion.div>
+          ) : !currentQuestion ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Card style={{
+                borderRadius: '24px',
+                textAlign: 'center',
+                padding: '60px 40px',
+                background: 'rgba(255,255,255,0.6)',
+                border: '1px solid rgba(255,255,255,0.8)'
+              }}>
+                <Text style={{ fontSize: '16px', color: '#6b7280', display: 'block', marginBottom: 20 }}>
+                  无法恢复上次测试题目，请重新开始
+                </Text>
+                <Button type="primary" size="large" onClick={returnToQuizHome}>
+                  返回测试首页
+                </Button>
+              </Card>
+            </motion.div>
           ) : (
             <motion.div
               key={currentQuestionIndex}
@@ -726,7 +752,7 @@ const Quiz = () => {
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
               <QuizQuestion
-                question={questions[currentQuestionIndex]}
+                question={currentQuestion}
                 onSubmit={handleSubmitAnswer}
                 feedback={historyLog[currentQuestionIndex]?.feedback}
                 savedAnswer={historyLog[currentQuestionIndex]?.answer}

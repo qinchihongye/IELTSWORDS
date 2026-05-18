@@ -126,6 +126,8 @@ const AIChatWidget = () => {
   });
   const [isResizingDrawer, setIsResizingDrawer] = useState(false);
   const scrollRef = useRef(null);
+  const lastOpenRef = useRef(false);
+  const isNearBottomRef = useRef(true);
   const reasoningCompletionRef = useRef(new Set());
   const canUseAI = aiSettings.canUseAI;
   const isDesktop = viewportWidth >= AI_DRAWER_DESKTOP_BREAKPOINT;
@@ -175,12 +177,35 @@ const AIChatWidget = () => {
     window.localStorage.setItem(AI_DRAWER_WIDTH_KEY, String(Math.round(drawerWidth)));
   }, [drawerWidth]);
 
+  const handleScroll = () => {
+    const container = scrollRef.current;
+    if (!container) return;
+    
+    const threshold = 100;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+    isNearBottomRef.current = isAtBottom;
+  };
+
+  // Handle scrolling behavior
   useEffect(() => {
     if (!scrollRef.current) {
       return;
     }
+    
+    const wasJustOpened = isOpen && !lastOpenRef.current;
+    lastOpenRef.current = isOpen;
 
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // Force scroll to bottom when newly opened, or when sending a message
+    if (wasJustOpened || isSending) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      isNearBottomRef.current = true;
+      return;
+    }
+    
+    // For stream updates, only auto-scroll if the user is already near the bottom
+    if (isNearBottomRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [isOpen, messages, isSending]);
 
   useEffect(() => {
@@ -455,6 +480,7 @@ const AIChatWidget = () => {
 
           <div
             ref={scrollRef}
+            onScroll={handleScroll}
             style={{
               flex: 1,
               overflowY: 'auto',

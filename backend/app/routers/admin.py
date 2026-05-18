@@ -6,15 +6,21 @@ from datetime import datetime, timezone
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import auth, crud, models, schemas
 from ..avatar_storage import (
+    BUILTIN_AVATAR_URL_PREFIX,
     DEFAULT_BUILTIN_AVATAR_KEY,
+    VIP_ONLY_BUILTIN_AVATAR_KEYS,
+    delete_builtin_avatar_file,
     delete_uploaded_avatar_file,
+    get_all_builtin_avatar_keys,
+    is_hardcoded_builtin_avatar,
     is_vip_only_builtin_avatar,
+    save_builtin_avatar,
 )
 from ..database import get_db
 from ..dependencies import get_role_level, has_min_role, require_admin, require_super_admin
@@ -211,11 +217,18 @@ async def update_admin_word(
     word_id: int,
     payload: schemas.WordUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_admin)
+    current_user: models.User = Depends(require_super_admin)
 ):
     """
-    管理员更新单词内容
+    管理员更新单词内容 (仅限超级管理员验证密码后修改)
     """
+    # 验证超级管理员密码
+    if not payload.password or not auth.verify_password(payload.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员密码验证失败，操作已拒绝"
+        )
+
     word = crud.get_word_by_id(db, word_id)
     if not word:
         raise HTTPException(
@@ -223,7 +236,10 @@ async def update_admin_word(
             detail="单词不存在"
         )
 
-    return crud.update_word_detail(db, word, payload)
+    # 排除密码字段，然后再交给 CRUD 保存
+    payload_dict = payload.model_dump(exclude={"password"}, exclude_unset=True)
+    update_payload = schemas.WordUpdate(**payload_dict)
+    return crud.update_word_detail(db, word, update_payload)
 
 
 @router.get("/export/users")
@@ -254,3 +270,44 @@ async def export_users(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=users.csv"}
     )
+
+
+# ============ 内置头像管理（仅超级管理员） ============
+
+def _get_label(filename: str) -> str:
+    return filename.rsplit(".", 1)[0]
+
+
+@router.get("/builtin-avatars")
+async def list_builtin_avatars(
+    current_user=Depends(require_super_admin),
+):
+    keys = get_all_builtin_avatar_keys()
+    return [
+        {
+            "key": k,
+            "label": _get_label(k),
+            "vip_only": k in VIP_ONLY_BUILTIN_AVATAR_KEYS,
+            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{k}",
+            "is_hardcoded": is_hardcoded_builtin_avatar(k),
+        }
+        for k in keys
+    ]
+
+
+@router.post("/builtin-avatars/upload")
+async def upload_builtin_avatar(
+    file: UploadFile = File(...),
+    current_user=Depends(require_super_admin),
+):
+    url = await save_builtin_avatar(file)
+    return {"url": url, "filename": file.filename}
+
+
+@router.delete("/builtin-avatars/{filename}")
+async def remove_builtin_avatar(
+    filename: str,
+    current_user=Depends(require_super_admin),
+):
+    delete_builtin_avatar_file(filename)
+    return {"message": f"内置头像 {filename} 已删除"}

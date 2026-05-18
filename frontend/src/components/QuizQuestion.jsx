@@ -11,11 +11,19 @@ const { Title, Text } = Typography;
 const QuizQuestion = ({ question, onSubmit, feedback, savedAnswer }) => {
   const [answer, setAnswer] = useState(savedAnswer || '');
   const inputRef = useRef(null);
+  const isMultipleChoice = question?.question_type === 'multiple_choice';
 
   // Keep answer in sync if navigating through history
   React.useEffect(() => {
     setAnswer(savedAnswer || '');
   }, [savedAnswer, question]);
+
+  // Auto-focus spelling input when a new spelling question appears
+  React.useEffect(() => {
+    if (!isMultipleChoice && !feedback && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [question, isMultipleChoice, feedback]);
 
   const handleSubmit = (val) => {
     const finalAnswer = typeof val === 'string' ? val : answer;
@@ -23,8 +31,6 @@ const QuizQuestion = ({ question, onSubmit, feedback, savedAnswer }) => {
       onSubmit(finalAnswer);
     }
   };
-
-  const isMultipleChoice = question.question_type === 'multiple_choice';
 
   return (
     <Card

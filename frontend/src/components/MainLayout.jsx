@@ -14,7 +14,8 @@ import {
   CrownOutlined,
   CalendarOutlined,
   EditOutlined,
-  BookOutlined
+  BookOutlined,
+  PictureOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -161,6 +162,11 @@ const MainLayout = () => {
               key: '/admin/super',
               icon: <CrownOutlined />,
               label: '超级管理',
+            },
+            {
+              key: '/admin/avatars',
+              icon: <PictureOutlined />,
+              label: '内置头像',
             },
           ] : []),
         ],

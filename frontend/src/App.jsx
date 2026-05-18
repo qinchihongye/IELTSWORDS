@@ -35,6 +35,7 @@ const CustomBookLearning = lazy(() => import('./pages/CustomBookLearning'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminContent = lazy(() => import('./pages/AdminContent'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
+const AdminBuiltinAvatars = lazy(() => import('./pages/AdminBuiltinAvatars'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 // 路由级全局加载骨架
@@ -104,6 +105,7 @@ function App() {
                 <Route path="admin/users" element={<ProtectedRoute minRole="admin"><AdminUsers /></ProtectedRoute>} />
                 <Route path="admin/content" element={<ProtectedRoute minRole="admin"><AdminContent /></ProtectedRoute>} />
                 <Route path="admin/super" element={<ProtectedRoute minRole="super_admin"><SuperAdmin /></ProtectedRoute>} />
+                <Route path="admin/avatars" element={<ProtectedRoute minRole="super_admin"><AdminBuiltinAvatars /></ProtectedRoute>} />
               </Route>
 
               {/* 404 页面 */}

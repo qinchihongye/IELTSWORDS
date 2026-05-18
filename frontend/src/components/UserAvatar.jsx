@@ -63,20 +63,18 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
             display: 'grid',
             justifyItems: 'center',
             gap: 12,
+            padding: '24px 0',
           }}
         >
-          <img
+          <Avatar
+            size={200}
             src={src}
-            alt={title}
+            shape="circle"
             style={{
-              width: '100%',
-              maxWidth: 360,
-              maxHeight: '70vh',
-              objectFit: 'contain',
-              borderRadius: 24,
-              background: 'rgba(248, 250, 252, 0.88)',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
             }}
           />
+          <span style={{ color: '#6b7280', fontSize: 14 }}>{title}</span>
         </div>
       </Modal>
     </>

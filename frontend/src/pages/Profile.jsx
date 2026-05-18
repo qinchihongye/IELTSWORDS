@@ -1,12 +1,72 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, Form, Input, Space, Tag, Typography, message } from 'antd';
-import { DownloadOutlined, LockOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { Button, Card, Form, Input, Space, Tag, Typography, message, Modal, Slider } from 'antd';
+import {
+  DownloadOutlined,
+  LockOutlined,
+  UploadOutlined,
+  UserOutlined,
+  ScissorOutlined,
+  CloudUploadOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined
+} from '@ant-design/icons';
+import Cropper from 'react-easy-crop';
 import apiClient from '../api/client';
 import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../context/AuthContext';
-import { BUILTIN_AVATAR_OPTIONS } from '../utils/avatars';
+import { BUILTIN_AVATAR_OPTIONS, fetchDynamicBuiltinAvatars } from '../utils/avatars';
 import { hasMinRole } from '../utils/roles';
+
 const { Title, Text } = Typography;
+
+// Utility to crop image inside a canvas and return a transparent PNG blob
+const getCroppedImg = (imageSrc, croppedAreaPixels) => {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.src = imageSrc;
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法获取 Canvas 2D 绘图上下文'));
+        return;
+      }
+
+      // We draw the crop area at the exact original pixel dimension to PRESERVE 100% original quality
+      const size = croppedAreaPixels.width;
+      canvas.width = size;
+      canvas.height = size;
+
+      // Create circular clipping path
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+      ctx.clip();
+
+      // Draw the cropped portion from original image onto the circular canvas area
+      ctx.drawImage(
+        image,
+        croppedAreaPixels.x,
+        croppedAreaPixels.y,
+        croppedAreaPixels.width,
+        croppedAreaPixels.height,
+        0,
+        0,
+        size,
+        size
+      );
+
+      // Convert canvas to a transparent PNG Blob
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Canvas is empty'));
+          return;
+        }
+        resolve(blob);
+      }, 'image/png');
+    };
+    image.onerror = (error) => reject(error);
+  });
+};
 
 const Profile = () => {
   const {
@@ -22,12 +82,42 @@ const Profile = () => {
   const [avatarSaving, setAvatarSaving] = useState(false);
   const canUseVipAvatar = hasMinRole(user, 'premium_user');
 
+  // Cropper states
+  const [cropImage, setCropImage] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [avatarOptions, setAvatarOptions] = useState(BUILTIN_AVATAR_OPTIONS);
+  const [previewAvatar, setPreviewAvatar] = useState(null);
+
+  const groupedAvatars = useMemo(() => {
+    const normal = [];
+    const vip = [];
+    avatarOptions.forEach((option) => {
+      if (option.vipOnly) {
+        vip.push(option);
+      } else {
+        normal.push(option);
+      }
+    });
+    return { normal, vip };
+  }, [avatarOptions]);
+
   useEffect(() => {
     profileForm.setFieldsValue({
       username: user?.username,
       email: user?.email,
     });
   }, [profileForm, user?.email, user?.username]);
+
+  useEffect(() => {
+    const loadDynamic = async () => {
+      await fetchDynamicBuiltinAvatars();
+      setAvatarOptions([...BUILTIN_AVATAR_OPTIONS]);
+    };
+    loadDynamic();
+  }, []);
 
   const handleExport = async () => {
     try {
@@ -61,7 +151,7 @@ const Profile = () => {
     }
   };
 
-  const handleAvatarUpload = async (event) => {
+  const handleAvatarUpload = (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
@@ -85,9 +175,35 @@ const Profile = () => {
       return;
     }
 
+    // Intercept automatic upload and open circular cropping box
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      setCropImage(reader.result);
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      setUploadFileName(`${baseName}.png`);
+    });
+    reader.readAsDataURL(file);
+  };
+
+  // Submit the cropped circular PNG Blob to backend
+  const handleCropSubmit = async () => {
+    if (!cropImage || !croppedAreaPixels) return;
     setAvatarSaving(true);
     try {
-      await uploadAvatar(file);
+      // 1. Get transparent circular PNG Blob
+      const croppedBlob = await getCroppedImg(cropImage, croppedAreaPixels);
+      
+      // 2. Wrap as File
+      const croppedFile = new File([croppedBlob], uploadFileName, { type: 'image/png' });
+
+      // 3. Upload via context hook
+      await uploadAvatar(croppedFile);
+      
+      message.success('个性圆形头像裁剪并上传成功');
+      setCropImage(null); // Close Cropper Modal
+    } catch (error) {
+      console.error('上传自定义裁剪圆形头像失败:', error);
+      message.error('头像裁剪或上传失败，请重试');
     } finally {
       setAvatarSaving(false);
     }
@@ -107,7 +223,12 @@ const Profile = () => {
       <Card className="profile-card">
         <div className="profile-avatar-panel">
           <div className="profile-avatar-preview">
-            <UserAvatar user={user} size={104} />
+            <UserAvatar
+              user={user}
+              size={104}
+              previewable
+              previewTitle={`${user?.username || '用户'} 的头像`}
+            />
             <div className="profile-avatar-preview__copy">
               <Title level={4} style={{ margin: 0 }}>{user?.username}</Title>
               <Text type="secondary">{user?.email}</Text>
@@ -153,41 +274,111 @@ const Profile = () => {
 
           <div className="profile-avatar-picker">
             <div className="profile-card-title"><UserOutlined /> 内置头像</div>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              这里内置了 {BUILTIN_AVATAR_OPTIONS.length} 个头像，点一下就能立即切换。
+            <Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
+              这里内置了 {avatarOptions.length} 个头像，点击头像可立即切换。
             </Text>
             <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              花舞霓裳为 VIP 用户及以上专属头像。
+              点击右下角 🔍 可放大预览，带有 👑 标识的头像为 VIP 用户及以上专属。
             </Text>
 
-            <div className="profile-avatar-grid">
-              {BUILTIN_AVATAR_OPTIONS.map((option) => {
-                const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
-                const locked = option.vipOnly && !canUseVipAvatar;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
-                    onClick={() => {
-                      if (locked) {
-                        message.warning('花舞霓裳头像仅 VIP 用户及以上可设置');
-                        return;
-                      }
-                      handleBuiltinAvatarSelect(option.key);
-                    }}
-                    disabled={avatarSaving}
-                    aria-disabled={locked}
-                  >
-                    <UserAvatar
-                      user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
-                      size={56}
-                    />
-                    {option.vipOnly ? <span className="profile-avatar-option__badge">VIP 专属</span> : null}
-                    <span>{option.label}</span>
-                  </button>
-                );
-              })}
+            <div className="profile-avatar-group-container">
+              <div className="profile-avatar-group-section">
+                <div className="profile-avatar-group-title vip">VIP 专属头像</div>
+                <div className="profile-avatar-grid">
+                  {groupedAvatars.vip.map((option) => {
+                    const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
+                    const locked = option.vipOnly && !canUseVipAvatar;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
+                        onClick={() => {
+                          if (locked) {
+                            message.warning(`${option.label}头像仅 VIP 用户及以上可设置`);
+                            return;
+                          }
+                          handleBuiltinAvatarSelect(option.key);
+                        }}
+                        disabled={avatarSaving}
+                        aria-disabled={locked}
+                      >
+                        <div style={{ position: 'relative', display: 'inline-flex' }}>
+                          <UserAvatar
+                            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                            size={56}
+                          />
+                          {option.vipOnly && (
+                            <div className="avatar-tag-overlay vip" title="VIP 专属">
+                              👑
+                            </div>
+                          )}
+                          <div
+                            className="avatar-zoom-trigger"
+                            title={`预览 ${option.label}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewAvatar(option);
+                            }}
+                          >
+                            🔍
+                          </div>
+                        </div>
+                        <span className="avatar-option-label">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="profile-avatar-group-section" style={{ marginTop: '20px' }}>
+                <div className="profile-avatar-group-title">普通头像</div>
+                <div className="profile-avatar-grid">
+                  {groupedAvatars.normal.map((option) => {
+                    const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
+                    const locked = option.vipOnly && !canUseVipAvatar;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
+                        onClick={() => {
+                          if (locked) {
+                            message.warning(`${option.label}头像仅 VIP 用户及以上可设置`);
+                            return;
+                          }
+                          handleBuiltinAvatarSelect(option.key);
+                        }}
+                        disabled={avatarSaving}
+                        aria-disabled={locked}
+                      >
+                        <div style={{ position: 'relative', display: 'inline-flex' }}>
+                          <UserAvatar
+                            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                            size={56}
+                          />
+                          {option.vipOnly && (
+                            <div className="avatar-tag-overlay vip" title="VIP 专属">
+                              👑
+                            </div>
+                          )}
+                          <div
+                            className="avatar-zoom-trigger"
+                            title={`预览 ${option.label}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewAvatar(option);
+                            }}
+                          >
+                            🔍
+                          </div>
+                        </div>
+                        <span className="avatar-option-label">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -252,6 +443,107 @@ const Profile = () => {
           <Button icon={<DownloadOutlined />} onClick={handleExport}>导出 CSV</Button>
         </div>
       </Card>
+
+      {/* The Interactive Circular Cropper Modal (Drag & Crop to perfect transparent circle) */}
+      <Modal
+        title={
+          <div className="modal-custom-title">
+            <ScissorOutlined style={{ color: '#8b5cf6', fontSize: '18px' }} />
+            <span>个性头像圆形高保真裁剪器</span>
+          </div>
+        }
+        open={!!cropImage}
+        onCancel={() => setCropImage(null)}
+        footer={
+          <div className="cropper-modal-footer">
+            <Button size="large" onClick={() => setCropImage(null)} style={{ borderRadius: '8px' }}>
+              取消
+            </Button>
+            <Button
+              type="primary"
+              size="large"
+              loading={avatarSaving}
+              icon={<CloudUploadOutlined />}
+              onClick={handleCropSubmit}
+              className="cropper-confirm-btn"
+            >
+              确认裁剪并上传
+            </Button>
+          </div>
+        }
+        width={550}
+        destroyOnClose
+        className="premium-cropper-modal"
+      >
+        {cropImage && (
+          <div className="cropper-wrapper">
+            <Text type="secondary" className="cropper-tip">
+              💡 鼠标拖动图片可移动位置，使用滚轮或下方控制杆可缩放。圆圈内部区域将保留，圆圈外部将自动裁剪为透明。
+            </Text>
+            
+            {/* The absolute Cropper container */}
+            <div className="cropper-container-box">
+              <Cropper
+                image={cropImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+              />
+            </div>
+
+            {/* Slider zoom controller */}
+            <div className="cropper-zoom-slider">
+              <ZoomOutOutlined style={{ color: '#94a3b8', fontSize: '16px' }} />
+              <Slider
+                min={1}
+                max={3}
+                step={0.05}
+                value={zoom}
+                onChange={setZoom}
+                tooltip={{ open: false }}
+                className="zoom-slider-glass"
+              />
+              <ZoomInOutlined style={{ color: '#6366f1', fontSize: '16px' }} />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Dynamic Built-in Avatar Preview Modal */}
+      <Modal
+        open={!!previewAvatar}
+        onCancel={() => setPreviewAvatar(null)}
+        footer={null}
+        centered
+        destroyOnClose
+        width={440}
+        title={`${previewAvatar?.label || '头像'} 预览`}
+      >
+        <div
+          style={{
+            display: 'grid',
+            justifyItems: 'center',
+            gap: 12,
+            padding: '24px 0',
+          }}
+        >
+          <UserAvatar
+            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: previewAvatar?.key }}
+            size={200}
+            style={{
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            }}
+          />
+          <span style={{ color: '#6b7280', fontSize: 14 }}>
+            {previewAvatar?.label} {previewAvatar?.vipOnly ? '(VIP 专属)' : ''}
+          </span>
+        </div>
+      </Modal>
     </div>
   );
 };
@@ -328,6 +620,44 @@ const css = `
   min-width: 0;
 }
 
+.profile-avatar-group-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-avatar-group-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-avatar-group-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-avatar-group-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: #6366f1;
+}
+
+.profile-avatar-group-title.vip {
+  color: #d97706;
+}
+
+.profile-avatar-group-title.vip::before {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
 .profile-avatar-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -376,18 +706,139 @@ const css = `
   box-shadow: none;
 }
 
-.profile-avatar-option__badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
+.avatar-tag-overlay {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  z-index: 2;
+  animation: overlayPulse 2s infinite ease-in-out;
+}
+
+.avatar-tag-overlay.vip {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+}
+
+.avatar-zoom-trigger {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: #475569;
+  cursor: zoom-in;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 3;
+}
+
+.avatar-zoom-trigger:hover {
+  background: #6366f1;
+  color: white;
+  border-color: #6366f1;
+  transform: scale(1.15);
+}
+
+@keyframes overlayPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.avatar-option-label {
+  margin-top: 4px;
+  font-size: 13px;
   font-weight: 700;
+  color: #475569;
 }
 
 .profile-avatar-option:disabled {
   cursor: wait;
   opacity: 0.75;
+}
+
+/* Interactive Circular Cropper Modal Custom Styles */
+.modal-custom-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cropper-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cropper-tip.ant-typography {
+  font-size: 13px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 8px 12px;
+  border-radius: 8px;
+  line-height: 1.5;
+  border-left: 3px solid #8b5cf6;
+}
+
+.cropper-container-box {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  background: #0f172a;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.cropper-zoom-slider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.zoom-slider-glass.ant-slider {
+  flex: 1;
+  margin: 0;
+}
+
+.cropper-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+.cropper-confirm-btn.ant-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.cropper-confirm-btn.ant-btn:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
 }
 
 @media (max-width: 920px) {

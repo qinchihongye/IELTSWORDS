@@ -146,6 +146,7 @@ class WordUpdate(BaseModel):
     word_note: Optional[str] = None
     phonetics_uk: Optional[str] = None
     phonetics_us: Optional[str] = None
+    password: Optional[str] = None
 
 # ============ 章节和分组相关 ============
 

@@ -1,3 +1,4 @@
+import apiClient from '../api/client';
 import config from '../config/settings';
 
 const BUILTIN_AVATAR_FILES = [
@@ -11,15 +12,14 @@ const BUILTIN_AVATAR_FILES = [
   '薄荷拇指.png',
   '香草草莓.png',
   '魔幻海洋.png',
-  '坦尼克.jpg',
-  '白二岐.jpg',
-  '萨利安.jpg',
+  '坦尼克.png',
+  '白二岐.png',
+  '萨利安.png',
   '白锦龟背竹.png',
   '绿天鹅绒.png',
   '银虎.png',
   '黑桃.png',
   '婉尼拉.png',
-  '女王之心.jpg',
 ];
 
 const LEGACY_BUILTIN_AVATAR_FILES = [
@@ -36,7 +36,14 @@ const LEGACY_BUILTIN_AVATAR_FILES = [
 ];
 
 export const DEFAULT_BUILTIN_AVATAR_KEY = '万华镜.png';
-const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set(['花舞霓裳.png']);
+const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
+  '花舞霓裳.png',
+  '石灰灯.png',
+  '香草草莓.png',
+  '白二岐.png',
+  '幻想曲.png',
+  '雪后.png',
+]);
 
 const builtinAvatarModules = import.meta.glob(
   [
@@ -60,16 +67,59 @@ const LEGACY_BUILTIN_AVATAR_KEY_MAP = Object.fromEntries(
 );
 const LEGACY_RENAMED_BUILTIN_AVATAR_KEY_MAP = {
   '石头灯.png': '石灰灯.png',
+  '坦尼克.jpg': '坦尼克.png',
+  '白二岐.jpg': '白二岐.png',
+  '萨利安.jpg': '萨利安.png',
 };
 
 const getAvatarLabel = (fileName) => fileName.replace(/\.[^.]+$/, '');
 
-export const BUILTIN_AVATAR_OPTIONS = BUILTIN_AVATAR_FILES.map((fileName) => ({
+export let BUILTIN_AVATAR_OPTIONS = BUILTIN_AVATAR_FILES.map((fileName) => ({
   key: fileName,
   label: getAvatarLabel(fileName),
   src: BUILTIN_AVATAR_SRC_BY_FILE[fileName] || '',
   vipOnly: VIP_ONLY_BUILTIN_AVATAR_KEYS.has(fileName),
 }));
+
+let dynamicBuiltinCache = [];
+
+const builtinApiBase = config.api.baseURL.replace(/\/$/, '');
+
+const refreshBuiltinOptions = () => {
+  const dynamicOptions = dynamicBuiltinCache.map((item) => ({
+    key: item.key,
+    label: item.label,
+    src: `${builtinApiBase}${item.url}`,
+    vipOnly: item.vip_only,
+  }));
+  const hardcodedKeys = new Set(BUILTIN_AVATAR_FILES);
+  const filteredDynamicOptions = dynamicOptions.filter((item) => !hardcodedKeys.has(item.key));
+  
+  BUILTIN_AVATAR_OPTIONS = [
+    ...BUILTIN_AVATAR_FILES.map((fileName) => ({
+      key: fileName,
+      label: getAvatarLabel(fileName),
+      src: BUILTIN_AVATAR_SRC_BY_FILE[fileName] || '',
+      vipOnly: VIP_ONLY_BUILTIN_AVATAR_KEYS.has(fileName),
+    })),
+    ...filteredDynamicOptions,
+  ];
+};
+
+const BUILTIN_KEYS_SET = new Set(BUILTIN_AVATAR_FILES);
+
+export const fetchDynamicBuiltinAvatars = async () => {
+  try {
+    const response = await apiClient.get('/api/avatars/builtin');
+    dynamicBuiltinCache = response.data || [];
+    refreshBuiltinOptions();
+  } catch {
+    // Silently fail — bundled avatars still work
+  }
+  return dynamicBuiltinCache;
+};
+
+export const getDynamicBuiltinAvatars = () => dynamicBuiltinCache;
 
 export const normalizeBuiltinAvatarKey = (avatarKey = DEFAULT_BUILTIN_AVATAR_KEY) => {
   const value = avatarKey?.trim();
@@ -78,6 +128,10 @@ export const normalizeBuiltinAvatarKey = (avatarKey = DEFAULT_BUILTIN_AVATAR_KEY
   }
 
   if (BUILTIN_AVATAR_SRC_BY_FILE[value]) {
+    return value;
+  }
+
+  if (dynamicBuiltinCache.some((item) => item.key === value)) {
     return value;
   }
 
@@ -98,6 +152,12 @@ export const isBuiltinAvatarVipOnly = (avatarKey) => (
   VIP_ONLY_BUILTIN_AVATAR_KEYS.has(normalizeBuiltinAvatarKey(avatarKey))
 );
 
+const getBuiltinSrc = (filename) => {
+  const bundledSrc = BUILTIN_AVATAR_SRC_BY_FILE[filename];
+  if (bundledSrc) return bundledSrc;
+  return `${builtinApiBase}/builtin-avatars/${filename}`;
+};
+
 export const getAvatarSrc = (userLike) => {
   if (!userLike) {
     return getBuiltinAvatarOption().src;
@@ -109,10 +169,14 @@ export const getAvatarSrc = (userLike) => {
     }
 
     try {
-      return new URL(userLike.avatar_value, `${config.api.baseURL.replace(/\/$/, '')}/`).href;
+      return new URL(userLike.avatar_value, `${builtinApiBase}/`).href;
     } catch (error) {
       console.error('解析上传头像地址失败:', error);
     }
+  }
+
+  if (userLike.avatar_type === 'builtin' || !userLike.avatar_type) {
+    return getBuiltinSrc(userLike.avatar_value || DEFAULT_BUILTIN_AVATAR_KEY);
   }
 
   return getBuiltinAvatarOption(userLike.avatar_value).src;

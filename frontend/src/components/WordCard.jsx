@@ -227,7 +227,7 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   {/* 占位与正面 h1 完全等高 (92px + 16px margin) 确保音标水平线一致 */}
                   <div style={{ minHeight: '92px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ fontSize: '28px', color: '#ffffff', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, letterSpacing: '1px' }}>
+                    <div style={{ fontSize: '28px', color: '#ffffff', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, letterSpacing: '1px', whiteSpace: 'pre-line' }}>
                       {word.explanation}
                     </div>
                   </div>

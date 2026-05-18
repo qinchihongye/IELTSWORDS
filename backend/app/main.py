@@ -34,6 +34,10 @@ UPLOADS_DIR = BASE_DIR / "data" / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
+BUILTIN_AVATARS_DIR = BASE_DIR / "data" / "builtin-avatars"
+BUILTIN_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/builtin-avatars", StaticFiles(directory=str(BUILTIN_AVATARS_DIR)), name="builtin-avatars")
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
@@ -63,9 +67,10 @@ async def health_check():
         return {"status": "unhealthy", "database": "error"}
 
 # 导入路由
-from .routers import auth, chapters, groups, words, images, progress, review, mistakes, checkin, quiz, admin, ai, custom_books
+from .routers import auth, avatars, chapters, groups, words, images, progress, review, mistakes, checkin, quiz, admin, ai, custom_books
 
 # 注册路由
+app.include_router(avatars.router, prefix="/api/avatars", tags=["头像"])
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
 app.include_router(chapters.router, prefix="/api/chapters", tags=["章节"])
 app.include_router(groups.router, prefix="/api/groups", tags=["分组"])
