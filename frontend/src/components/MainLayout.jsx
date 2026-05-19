@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Typography, Dropdown } from 'antd';
+import { Layout, Menu, Button, Typography, Dropdown, Modal, Avatar } from 'antd';
 import { 
   AppstoreOutlined, 
   ReadOutlined, 
@@ -21,6 +21,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLearning } from '../context/LearningContext';
 import { hasMinRole, ROLE_COLORS, ROLE_LABELS } from '../utils/roles';
+import { getAvatarSrc, getAvatarFallbackText } from '../utils/avatars';
 import AIChatWidget from './AIChatWidget';
 import UserAvatar from './UserAvatar';
 
@@ -41,6 +42,7 @@ const MainLayout = () => {
   const { resetLearning, setMode } = useLearning();
   const [collapsed, setCollapsed] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
 
   const handleMenuClick = ({ key }) => {
     resetLearning();
@@ -312,11 +314,53 @@ const MainLayout = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <Dropdown menu={userMenu} placement="bottomRight" arrow>
-              <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 10, padding: '4px 12px 4px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.05)' }}>
+              <div 
+                onDoubleClick={() => setAvatarPreviewOpen(true)}
+                title="双击预览头像"
+                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 10, padding: '4px 12px 4px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.05)' }}
+              >
                 <UserAvatar user={user} size={28} />
                 <Text style={{ fontWeight: 500, color: '#4b5563' }}>{user?.username}</Text>
               </div>
             </Dropdown>
+
+            <Modal
+              open={avatarPreviewOpen}
+              onCancel={() => setAvatarPreviewOpen(false)}
+              footer={null}
+              centered
+              destroyOnClose
+              width={400}
+              title={`${user?.username || '用户'} 的头像`}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  justifyItems: 'center',
+                  gap: 12,
+                  padding: '24px 0',
+                }}
+              >
+                <Avatar
+                  size={240}
+                  src={getAvatarSrc(user)}
+                  icon={!getAvatarSrc(user) ? <UserOutlined /> : undefined}
+                  shape="circle"
+                  style={{
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    color: '#4f46e5',
+                    fontSize: 80,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {!getAvatarSrc(user) ? getAvatarFallbackText(user?.username || user?.email || '') : null}
+                </Avatar>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>{user?.username || '用户'}</span>
+              </div>
+            </Modal>
           </div>
         </Header>
         

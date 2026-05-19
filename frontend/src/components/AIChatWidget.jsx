@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Drawer, FloatButton, Input, Modal, Select, Space, Typography, message } from 'antd';
 import { BulbOutlined, DeleteOutlined, DownOutlined, LinkOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RobotOutlined, SendOutlined, SettingOutlined, ThunderboltFilled } from '@ant-design/icons';
 import { useAIChat } from '../context/AIChatContext';
+import { useAuth } from '../context/AuthContext';
 import AIMarkdownContent from './AIMarkdownContent';
+import UserAvatar from './UserAvatar';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 const MODEL_PROVIDER_ORDER = ['OpenAI', 'DeepSeek', 'Anthropic (Claude)', 'Kimi', 'Other models'];
 const AI_DRAWER_WIDTH_KEY = 'ieltswords_ai_drawer_width';
@@ -41,7 +43,7 @@ const getModelProvider = (model) => {
 
 const buildModelLabel = (model) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-    <ThunderboltFilled style={{ color: '#4f46e5', fontSize: 13 }} />
+    <ThunderboltFilled style={{ color: '#b590e8', fontSize: 13 }} />
     <span>{model}</span>
   </span>
 );
@@ -71,22 +73,23 @@ const groupModels = (models) => {
 const bubbleStyle = (role, isError) => {
   if (role === 'user') {
     return {
-      marginLeft: 'auto',
-      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+      background: 'linear-gradient(135deg, #d6c1f9 0%, #b590e8 100%)',
       color: '#ffffff',
       border: 'none',
     };
   }
 
   return {
-    marginRight: 'auto',
-    background: isError ? 'rgba(254, 242, 242, 0.96)' : 'rgba(255, 255, 255, 0.94)',
-    color: isError ? '#b91c1c' : '#1f2937',
-    border: isError ? '1px solid rgba(239, 68, 68, 0.22)' : '1px solid rgba(148, 163, 184, 0.16)',
+    background: isError ? 'rgba(254, 242, 242, 0.96)' : 'rgba(255, 255, 255, 0.85)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    color: isError ? '#b91c1c' : '#1e293b',
+    border: isError ? '1px solid rgba(239, 68, 68, 0.22)' : '1px solid rgba(255, 255, 255, 0.6)',
   };
 };
 
 const AIChatWidget = () => {
+  const { user } = useAuth();
   const {
     isOpen,
     openDrawer,
@@ -132,6 +135,73 @@ const AIChatWidget = () => {
   const canUseAI = aiSettings.canUseAI;
   const isDesktop = viewportWidth >= AI_DRAWER_DESKTOP_BREAKPOINT;
   const activeDrawerWidth = isDesktop ? clampDrawerWidth(drawerWidth, viewportWidth) : '100vw';
+
+  // Draggable Floating Button logic
+  const [buttonBottom, setButtonBottom] = useState(28);
+  const [isDraggingButton, setIsDraggingButton] = useState(false);
+  const dragStartYRef = useRef(0);
+  const dragStartBottomRef = useRef(28);
+  const dragMoveOccurredRef = useRef(false);
+
+  const handleButtonMouseDown = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setIsDraggingButton(true);
+    dragStartYRef.current = e.clientY;
+    dragStartBottomRef.current = buttonBottom;
+    dragMoveOccurredRef.current = false;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaY = dragStartYRef.current - moveEvent.clientY;
+      if (Math.abs(deltaY) > 5) {
+        dragMoveOccurredRef.current = true;
+      }
+      const newBottom = Math.max(20, Math.min(window.innerHeight - 100, dragStartBottomRef.current + deltaY));
+      setButtonBottom(newBottom);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingButton(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleButtonTouchStart = (e) => {
+    const touch = e.touches[0];
+    setIsDraggingButton(true);
+    dragStartYRef.current = touch.clientY;
+    dragStartBottomRef.current = buttonBottom;
+    dragMoveOccurredRef.current = false;
+
+    const handleTouchMove = (moveEvent) => {
+      const touchMove = moveEvent.touches[0];
+      const deltaY = dragStartYRef.current - touchMove.clientY;
+      if (Math.abs(deltaY) > 5) {
+        dragMoveOccurredRef.current = true;
+      }
+      const newBottom = Math.max(20, Math.min(window.innerHeight - 100, dragStartBottomRef.current + deltaY));
+      setButtonBottom(newBottom);
+    };
+
+    const handleTouchEnd = () => {
+      setIsDraggingButton(false);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+
+    document.addEventListener('touchmove', handleTouchMove);
+    document.addEventListener('touchend', handleTouchEnd);
+  };
+
+  const handleButtonClick = () => {
+    if (!dragMoveOccurredRef.current) {
+      openDrawer();
+    }
+  };
 
   const contextShortcuts = useMemo(
     () => chatContext?.shortcuts || [],
@@ -373,19 +443,70 @@ const AIChatWidget = () => {
 
   return (
     <>
-      <FloatButton
-        icon={<MessageOutlined />}
-        type="primary"
-        tooltip="AI 助手"
-        onClick={openDrawer}
-        style={{ insetInlineEnd: 28, bottom: 28 }}
-      />
+      <div
+        style={{
+          position: 'fixed',
+          insetInlineEnd: 28,
+          bottom: buttonBottom,
+          zIndex: 1000,
+          cursor: isDraggingButton ? 'grabbing' : 'grab',
+          touchAction: 'none'
+        }}
+        onMouseDown={handleButtonMouseDown}
+        onTouchStart={handleButtonTouchStart}
+      >
+        <FloatButton
+          icon={<MessageOutlined style={{ color: '#ffffff' }} />}
+          tooltip="AI 助手 (可拖动)"
+          onClick={handleButtonClick}
+          style={{ 
+            position: 'relative', 
+            insetInlineEnd: 'auto', 
+            bottom: 'auto',
+            background: 'linear-gradient(135deg, #d6c1f9 0%, #b590e8 100%)',
+            border: 'none',
+            boxShadow: '0 4px 14px rgba(181, 144, 232, 0.3)'
+          }}
+        />
+      </div>
+
+      <style>{`
+        .ai-assistant-drawer .ant-drawer-content {
+          background: linear-gradient(135deg, #e9e2ee 0%, #cabacd 100%) !important;
+        }
+        .ai-assistant-drawer .ant-drawer-header {
+          background: transparent !important;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.15) !important;
+        }
+        .ai-assistant-drawer .ant-drawer-body {
+          background: transparent !important;
+        }
+      `}</style>
 
       <Drawer
+        className="ai-assistant-drawer"
+        rootClassName="ai-assistant-drawer"
         title={(
-          <Space size={10}>
-            <RobotOutlined style={{ color: '#6366f1' }} />
-            <span>AI 学习助手</span>
+          <Space size={10} style={{ display: 'flex', alignItems: 'center' }}>
+            <img
+              src="/ai-avatar.png"
+              alt="AI"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '10px',
+                boxShadow: '0 4px 12px rgba(181, 144, 232, 0.2)',
+                objectFit: 'cover'
+              }}
+            />
+            <span style={{ 
+              fontWeight: 800, 
+              fontSize: 16, 
+              letterSpacing: '0.5px',
+              color: '#2e1065'
+            }}>
+              IELTS AI 助手
+            </span>
           </Space>
         )}
         placement="right"
@@ -395,26 +516,49 @@ const AIChatWidget = () => {
         extra={(
           <Space size={8}>
             <Button
-              icon={<SettingOutlined />}
+              icon={<SettingOutlined style={{ color: '#b590e8' }} />}
               size="small"
               onClick={openSettingsModal}
+              style={{
+                borderRadius: '8px',
+                background: 'rgba(181, 144, 232, 0.05)',
+                border: '1px solid rgba(181, 144, 232, 0.12)',
+                fontWeight: 600,
+                color: '#b590e8',
+                fontSize: 12
+              }}
             >
               配置
             </Button>
             <Button
-              icon={<DeleteOutlined />}
+              icon={<DeleteOutlined style={{ color: '#ef4444' }} />}
               size="small"
               onClick={() => resetConversation()}
+              style={{
+                borderRadius: '8px',
+                background: 'rgba(239, 68, 68, 0.05)',
+                border: '1px solid rgba(239, 68, 68, 0.12)',
+                fontWeight: 600,
+                color: '#ef4444',
+                fontSize: 12
+              }}
             >
               清空
             </Button>
           </Space>
         )}
         styles={{
+          content: {
+            background: 'linear-gradient(135deg, #e9e2ee 0%, #cabacd 100%)',
+          },
+          header: {
+            background: 'transparent',
+            borderBottom: '1px solid rgba(148, 163, 184, 0.15)',
+          },
           body: {
             padding: 0,
             position: 'relative',
-            background: 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+            background: 'transparent',
           },
         }}
       >
@@ -446,10 +590,10 @@ const AIChatWidget = () => {
                   width: 2,
                   borderRadius: 999,
                   background: isResizingDrawer
-                    ? 'rgba(99, 102, 241, 0.5)'
+                    ? 'rgba(181, 144, 232, 0.5)'
                     : 'rgba(148, 163, 184, 0.28)',
                   boxShadow: isResizingDrawer
-                    ? '0 0 0 3px rgba(99, 102, 241, 0.12)'
+                    ? '0 0 0 3px rgba(181, 144, 232, 0.12)'
                     : 'none',
                 }}
               />
@@ -466,9 +610,9 @@ const AIChatWidget = () => {
                     disabled={isSending || isSettingsSaving || !canUseAI}
                     style={{
                       borderRadius: 999,
-                      background: 'rgba(99, 102, 241, 0.06)',
-                      borderColor: 'rgba(99, 102, 241, 0.16)',
-                      color: '#4f46e5',
+                      background: 'rgba(181, 144, 232, 0.06)',
+                      borderColor: 'rgba(181, 144, 232, 0.16)',
+                      color: '#8a63d2',
                     }}
                   >
                     {shortcut.label}
@@ -484,14 +628,121 @@ const AIChatWidget = () => {
             style={{
               flex: 1,
               overflowY: 'auto',
-              padding: '16px',
+              padding: '20px 16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 12,
+              gap: 18,
             }}
           >
-            {messages.map((message) => (
-              (() => {
+            {messages.length === 0 ? (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 16px',
+                textAlign: 'center',
+                height: '100%',
+                color: '#64748b'
+              }}>
+                <img
+                  src="/ai-avatar.png"
+                  alt="AI Assistant Avatar"
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '20px',
+                    marginBottom: 20,
+                    boxShadow: '0 8px 24px rgba(181, 144, 232, 0.25)',
+                    objectFit: 'cover'
+                  }}
+                />
+                <Title level={4} style={{ margin: '0 0 8px 0', color: '#1e293b', fontWeight: 800 }}>
+                  IELTS 智能学习助手
+                </Title>
+                <Text style={{ fontSize: 13, color: '#64748b', maxWidth: 280, marginBottom: 32 }}>
+                  你好！我是你的专属 AI 助手，可以为你解答词汇用法、语法搭配，或提供高效的备考建议。
+                </Text>
+                
+                <div style={{
+                  width: '100%',
+                  display: 'grid',
+                  gap: 12,
+                  textAlign: 'left'
+                }}>
+                  <div 
+                    onClick={() => setDraft('这个词的核心用法和搭配有哪些？')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.65)',
+                      border: '1px solid rgba(226, 232, 240, 0.8)',
+                      borderRadius: 16,
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = '#b590e8';
+                      e.currentTarget.style.background = '#ffffff';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#334155', fontSize: 13, marginBottom: 2 }}>📖 词汇精讲</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>"这个词的核心用法 and 搭配有哪些？"</div>
+                  </div>
+                  
+                  <div 
+                    onClick={() => setDraft('帮我分析一下这句例句的结构与考点。')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.65)',
+                      border: '1px solid rgba(226, 232, 240, 0.8)',
+                      borderRadius: 16,
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = '#b590e8';
+                      e.currentTarget.style.background = '#ffffff';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#334155', fontSize: 13, marginBottom: 2 }}>📝 语法考点剖析</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>"帮我分析一下这句例句的结构与考点。"</div>
+                  </div>
+
+                  <div 
+                    onClick={() => setDraft('雅思学术类阅读词汇应该如何高效记忆？')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.65)',
+                      border: '1px solid rgba(226, 232, 240, 0.8)',
+                      borderRadius: 16,
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = '#b590e8';
+                      e.currentTarget.style.background = '#ffffff';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#334155', fontSize: 13, marginBottom: 2 }}>🎓 备考策略建议</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>"雅思学术类阅读词汇应该如何高效记忆？"</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              messages.map((message) => {
+                const isUser = message.role === 'user';
                 const hasReasoning = Boolean(message.reasoning);
                 const isReasoningExpanded = hasReasoning && (!message.reasoningComplete || expandedReasoningIds.has(message.id));
 
@@ -499,100 +750,153 @@ const AIChatWidget = () => {
                   <div
                     key={message.id}
                     style={{
-                      maxWidth: '88%',
-                      width: 'fit-content',
-                      borderRadius: 18,
-                      padding: '12px 14px',
-                      whiteSpace: 'pre-wrap',
-                      lineHeight: 1.7,
-                      boxShadow: message.role === 'user'
-                        ? '0 12px 28px rgba(99, 102, 241, 0.22)'
-                        : '0 10px 24px rgba(15, 23, 42, 0.05)',
-                      ...bubbleStyle(message.role, message.error),
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      width: '100%',
+                      alignItems: isUser ? 'flex-end' : 'flex-start',
                     }}
                   >
-                    {message.role === 'user' ? (
-                      <Text style={{ color: '#ffffff' }}>
-                        {message.content}
-                      </Text>
-                    ) : (
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {hasReasoning && (
-                          <div
-                            style={{
-                              borderRadius: 14,
-                              overflow: 'hidden',
-                              border: '1px solid rgba(148, 163, 184, 0.16)',
-                              background: 'rgba(248, 250, 252, 0.92)',
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleReasoning(message.id)}
+                    {/* Header Row (Avatar + Name) */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexDirection: isUser ? 'row-reverse' : 'row',
+                        padding: '0 4px',
+                      }}
+                    >
+                      {isUser ? (
+                        <UserAvatar user={user} size={20} />
+                      ) : (
+                        <img
+                          src="/ai-avatar.png"
+                          alt="AI Avatar"
+                          style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: '50%',
+                            border: '1px solid rgba(181, 144, 232, 0.2)',
+                            boxShadow: '0 2px 6px rgba(181, 144, 232, 0.1)',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      )}
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
+                        {isUser ? (user?.username || '你') : 'IELTS AI 助手'}
+                      </span>
+                    </div>
+
+                    {/* Message Bubble */}
+                    <div
+                      style={{
+                        maxWidth: '100%',
+                        width: isUser ? 'auto' : '100%',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.7,
+                        fontSize: '14px',
+                        boxShadow: isUser
+                          ? '0 6px 16px rgba(181, 144, 232, 0.08)'
+                          : '0 4px 12px rgba(15, 23, 42, 0.02)',
+                        ...bubbleStyle(message.role, message.error),
+                      }}
+                    >
+                      {isUser ? (
+                        <Text style={{ color: '#ffffff' }}>
+                          {message.content}
+                        </Text>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {hasReasoning && (
+                            <div
                               style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: 12,
-                                border: 'none',
-                                background: 'transparent',
-                                padding: '10px 12px',
-                                cursor: 'pointer',
-                                color: '#475569',
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                                border: '1px solid rgba(181, 144, 232, 0.15)',
+                                borderLeft: '3px solid #b590e8',
+                                background: 'rgba(181, 144, 232, 0.04)',
                               }}
                             >
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
-                                <BulbOutlined />
-                                {message.reasoningComplete ? '思考过程' : '正在思考'}
-                              </span>
-                              {isReasoningExpanded ? <DownOutlined /> : <RightOutlined />}
-                            </button>
-                            {isReasoningExpanded && (
-                              <div
+                              <button
+                                type="button"
+                                onClick={() => toggleReasoning(message.id)}
                                 style={{
-                                  padding: '0 12px 12px',
-                                  borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                                  width: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                  border: 'none',
+                                  background: 'transparent',
+                                  padding: '8px 10px',
+                                  cursor: 'pointer',
+                                  color: '#8a63d2',
                                 }}
                               >
-                                <AIMarkdownContent content={message.reasoning} tone="subtle" />
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                  <ThunderboltFilled style={{ color: '#b590e8', fontSize: 11 }} />
+                                  {message.reasoningComplete ? '深度思考过程' : 'AI 正在思考...'}
+                                </span>
+                                {isReasoningExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
+                              </button>
+                              {isReasoningExpanded && (
+                                <div
+                                  style={{
+                                    padding: '0 10px 10px',
+                                    borderTop: '1px solid rgba(181, 144, 232, 0.08)',
+                                  }}
+                                >
+                                  <AIMarkdownContent content={message.reasoning} tone="subtle" />
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                        {message.content && (
-                          <AIMarkdownContent content={message.content} tone="default" />
-                        )}
+                          {message.content && (
+                            <AIMarkdownContent content={message.content} tone="default" />
+                          )}
 
-                        {!message.content && message.streaming && (
-                          <Text style={{ color: '#64748b' }}>AI 正在组织回答...</Text>
-                        )}
+                          {!message.content && message.streaming && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b590e8', fontSize: 13, fontWeight: 500 }}>
+                              <span className="dot-flashing-loader" style={{ color: '#b590e8' }} />
+                              <span>AI 正在思考解答</span>
+                            </div>
+                          )}
 
-                        {message.streamError && (
-                          <div
-                            style={{
-                              borderRadius: 12,
-                              padding: '10px 12px',
-                              background: 'rgba(254, 242, 242, 0.92)',
-                              border: '1px solid rgba(239, 68, 68, 0.2)',
-                              color: '#b91c1c',
-                              fontSize: 12,
-                              lineHeight: 1.65,
-                            }}
-                          >
-                            {message.streamError}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          {message.streamError && (
+                            <div
+                              style={{
+                                borderRadius: 10,
+                                padding: '8px 12px',
+                                background: 'rgba(254, 242, 242, 0.9)',
+                                border: '1px solid rgba(239, 68, 68, 0.15)',
+                                color: '#b91c1c',
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              {message.streamError}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
-              })()
-            ))}
+              })
+            )}
           </div>
 
-          <div style={{ padding: 16, borderTop: '1px solid rgba(148, 163, 184, 0.12)', background: 'rgba(255, 255, 255, 0.62)' }}>
+          <div style={{ 
+            padding: '16px 20px', 
+            borderTop: '1px solid rgba(148, 163, 184, 0.1)', 
+            background: 'rgba(255, 255, 255, 0.35)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)'
+          }}>
             {shouldShowModelBox && (
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Select
@@ -601,8 +905,8 @@ const AIChatWidget = () => {
                   onChange={selectModel}
                   disabled={isSending || !canUseAI || modelCount <= 1}
                   popupMatchSelectWidth={false}
-                  suffixIcon={<DownOutlined style={{ color: '#64748b', fontSize: 12 }} />}
-                  style={{ minWidth: 220, maxWidth: '100%' }}
+                  suffixIcon={<DownOutlined style={{ color: '#b590e8', fontSize: 11 }} />}
+                  style={{ minWidth: 200, maxWidth: '100%' }}
                   placeholder="选择模型"
                   styles={{
                     popup: {
@@ -620,87 +924,130 @@ const AIChatWidget = () => {
             {shouldShowModelBox && (
               <style>{`
                 .ai-chat-model-select .ant-select-selector {
-                  min-height: 40px !important;
-                  padding: 0 14px !important;
-                  border-radius: 999px !important;
-                  background: rgba(99, 102, 241, 0.08) !important;
-                  border: 1px solid rgba(99, 102, 241, 0.14) !important;
+                  min-height: 32px !important;
+                  padding: 0 12px !important;
+                  border-radius: 12px !important;
+                  background: rgba(181, 144, 232, 0.06) !important;
+                  border: 1px solid rgba(181, 144, 232, 0.12) !important;
                   box-shadow: none !important;
                 }
                 .ai-chat-model-select .ant-select-selection-item {
                   display: flex !important;
                   align-items: center !important;
-                  gap: 8px !important;
-                  font-size: 14px !important;
-                  font-weight: 600 !important;
-                  color: #3730a3 !important;
+                  gap: 6px !important;
+                  font-size: 13px !important;
+                  font-weight: 700 !important;
+                  color: #8a63d2 !important;
                 }
                 .ai-chat-model-select.ant-select-disabled .ant-select-selector {
                   opacity: 0.86;
                   cursor: default !important;
                 }
                 .ai-chat-model-popup {
-                  padding: 10px !important;
+                  padding: 8px !important;
                   background: rgba(20, 23, 35, 0.96) !important;
                   border: 1px solid rgba(255, 255, 255, 0.08) !important;
                   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28) !important;
                   backdrop-filter: blur(18px);
+                  border-radius: 14px !important;
                 }
                 .ai-chat-model-popup .ant-select-item-group {
                   color: rgba(255, 255, 255, 0.5) !important;
-                  font-size: 12px !important;
+                  font-size: 11px !important;
                   font-weight: 600 !important;
-                  padding: 10px 12px 6px !important;
+                  padding: 8px 10px 4px !important;
                 }
                 .ai-chat-model-popup .ant-select-item-option {
-                  border-radius: 12px !important;
-                  margin: 4px 0 !important;
-                  padding: 11px 12px !important;
-                  color: rgba(255, 255, 255, 0.94) !important;
+                  border-radius: 10px !important;
+                  margin: 3px 0 !important;
+                  padding: 8px 10px !important;
+                  color: rgba(255, 255, 255, 0.9) !important;
                 }
                 .ai-chat-model-popup .ant-select-item-option-content {
                   display: flex !important;
                   align-items: center !important;
-                  gap: 8px !important;
+                  gap: 6px !important;
+                  font-size: 13px !important;
                 }
                 .ai-chat-model-popup .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
-                  background: rgba(115, 92, 255, 0.42) !important;
+                  background: rgba(181, 144, 232, 0.25) !important;
                 }
                 .ai-chat-model-popup .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
                   background: rgba(255, 255, 255, 0.08) !important;
                 }
+                @keyframes dotFlashing {
+                  0% { opacity: 0.2; }
+                  20% { opacity: 1; }
+                  100% { opacity: 0.2; }
+                }
+                .dot-flashing-loader::after {
+                  content: ' . . .';
+                  animation: dotFlashing 1.4s infinite both;
+                  font-weight: bold;
+                }
               `}</style>
             )}
-            <Input.TextArea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={finalPlaceholder}
-              autoSize={{ minRows: 3, maxRows: 6 }}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              style={{
-                borderRadius: 14,
-                padding: 12,
-                resize: 'none',
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-              <Text style={{ fontSize: 12, color: '#94a3b8' }}>
-                Enter 发送，Shift + Enter 换行
-              </Text>
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={() => void handleSend()}
-                disabled={!draft.trim() || isSending || isSettingsSaving || !canUseAI}
-                style={{ borderRadius: 999 }}
-              >
-                发送
-              </Button>
+
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid rgba(226, 232, 240, 0.8)',
+              borderRadius: '16px',
+              padding: '12px 14px 10px',
+              boxShadow: '0 8px 20px -6px rgba(15, 23, 42, 0.04)',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <Input.TextArea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={finalPlaceholder}
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                variant="borderless"
+                onPressEnter={(e) => {
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                style={{
+                  padding: 0,
+                  fontSize: '14px',
+                  resize: 'none',
+                  background: 'transparent',
+                  color: '#1e293b',
+                }}
+              />
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                borderTop: '1px solid rgba(241, 245, 249, 0.8)',
+                paddingTop: 8
+              }}>
+                <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                  Enter 发送，Shift + Enter 换行
+                </Text>
+                <Button
+                  type="primary"
+                  shape="circle"
+                  icon={<SendOutlined style={{ fontSize: 12 }} />}
+                  onClick={() => void handleSend()}
+                  disabled={!draft.trim() || isSending || isSettingsSaving || !canUseAI}
+                  style={{ 
+                    background: draft.trim() && !isSending && !isSettingsSaving ? 'linear-gradient(135deg, #d6c1f9 0%, #b590e8 100%)' : '#f1f5f9',
+                    border: 'none',
+                    color: draft.trim() && !isSending && !isSettingsSaving ? '#ffffff' : '#94a3b8',
+                    width: 30,
+                    height: 30,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: draft.trim() && !isSending && !isSettingsSaving ? '0 4px 10px rgba(181, 144, 232, 0.2)' : 'none'
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>

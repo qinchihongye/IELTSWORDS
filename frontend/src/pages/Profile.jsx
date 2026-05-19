@@ -5,6 +5,7 @@ import {
   LockOutlined,
   UploadOutlined,
   UserOutlined,
+  PictureOutlined,
   ScissorOutlined,
   CloudUploadOutlined,
   ZoomInOutlined,
@@ -89,6 +90,7 @@ const Profile = () => {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [uploadFileName, setUploadFileName] = useState('');
   const [avatarOptions, setAvatarOptions] = useState(BUILTIN_AVATAR_OPTIONS);
+  const [activeTab, setActiveTab] = useState('basic');
   const [previewAvatar, setPreviewAvatar] = useState(null);
 
   const groupedAvatars = useMemo(() => {
@@ -219,8 +221,86 @@ const Profile = () => {
           <Text type="secondary">管理账户信息、头像、密码和个人学习数据。</Text>
         </div>
       </div>
+      
+      <div className="profile-layout">
+        <aside className="profile-sidebar">
+          <ul className="profile-menu">
+            <li className={`profile-menu-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
+              <UserOutlined className="menu-icon" /> <span className="menu-text">基础资料修改</span>
+            </li>
+            <li className={`profile-menu-item ${activeTab === 'avatar' ? 'active' : ''}`} onClick={() => setActiveTab('avatar')}>
+              <PictureOutlined className="menu-icon" /> <span className="menu-text">头像修改</span>
+            </li>
+            <li className={`profile-menu-item ${activeTab === 'export' ? 'active' : ''}`} onClick={() => setActiveTab('export')}>
+              <DownloadOutlined className="menu-icon" /> <span className="menu-text">数据导出</span>
+            </li>
+          </ul>
+        </aside>
 
+        <main className="profile-content">
+          {activeTab === 'basic' && (
+            <Card className="profile-card">
+        <div className="profile-card-title" style={{ marginBottom: '16px', fontSize: '18px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
+          <UserOutlined style={{ color: '#6366f1' }} /> 基础资料修改
+        </div>
+        <div className="profile-grid" style={{ maxWidth: '800px', margin: '0 auto', gap: '60px' }}>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <div className="profile-card-title" style={{ fontSize: '15px' }}>个人信息</div>
+            <Form
+              form={profileForm}
+              layout="vertical"
+              onFinish={updateProfile}
+            >
+              <Form.Item label="用户名" name="username" rules={[{ required: true }, { min: 3 }]} style={{ marginBottom: '12px' }}>
+                <Input />
+              </Form.Item>
+              <Form.Item label="邮箱" name="email" rules={[{ required: true }, { type: 'email' }]} style={{ marginBottom: '20px' }}>
+                <Input />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" style={{ width: '100%' }}>保存资料</Button>
+            </Form>
+          </Space>
+
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <div className="profile-card-title" style={{ fontSize: '15px' }}><LockOutlined /> 修改密码</div>
+            <Form
+              form={passwordForm}
+              layout="vertical"
+              onFinish={async (values) => {
+                if (values.newPassword !== values.confirmPassword) {
+                  message.warning('两次输入的密码不一致');
+                  return;
+                }
+                const success = await changePassword(values.currentPassword, values.newPassword);
+                if (success) passwordForm.resetFields();
+              }}
+            >
+              <Form.Item label="当前密码" name="currentPassword" rules={[{ required: true }]} style={{ marginBottom: '12px' }}>
+                <Input.Password />
+              </Form.Item>
+              <Form.Item label="新密码" name="newPassword" rules={[{ required: true }, { min: 8 }]} style={{ marginBottom: '12px' }}>
+                <Input.Password />
+              </Form.Item>
+              <Form.Item label="确认新密码" name="confirmPassword" rules={[{ required: true }]} style={{ marginBottom: '20px' }}>
+                <Input.Password />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" style={{ width: '100%' }}>更新密码</Button>
+            </Form>
+          </Space>
+        </div>
+      </Card>
+      )}
+
+      {activeTab === 'avatar' && (
       <Card className="profile-card">
+        <div className="profile-card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', fontSize: '18px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <UserOutlined style={{ color: '#6366f1' }} /> 头像修改
+          </div>
+          <Text type="secondary" style={{ fontSize: '13px', fontWeight: 'normal' }}>
+            🔍 可放大预览，👑 标识的头像为 VIP 用户及以上专属。
+          </Text>
+        </div>
         <div className="profile-avatar-panel">
           <div className="profile-avatar-preview">
             <UserAvatar
@@ -273,13 +353,7 @@ const Profile = () => {
           </div>
 
           <div className="profile-avatar-picker">
-            <div className="profile-card-title"><UserOutlined /> 内置头像</div>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
-              这里内置了 {avatarOptions.length} 个头像，点击头像可立即切换。
-            </Text>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              点击右下角 🔍 可放大预览，带有 👑 标识的头像为 VIP 用户及以上专属。
-            </Text>
+
 
             <div className="profile-avatar-group-container">
               <div className="profile-avatar-group-section">
@@ -383,66 +457,24 @@ const Profile = () => {
           </div>
         </div>
       </Card>
+      )}
 
-      <div className="profile-grid">
-        <Card className="profile-card">
-          <Space direction="vertical" size={18} style={{ width: '100%' }}>
-            <div className="profile-card-title"><UserOutlined /> 基础资料</div>
-            <Form
-              form={profileForm}
-              layout="vertical"
-              onFinish={updateProfile}
-            >
-              <Form.Item label="用户名" name="username" rules={[{ required: true }, { min: 3 }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item label="邮箱" name="email" rules={[{ required: true }, { type: 'email' }]}>
-                <Input />
-              </Form.Item>
-              <Button type="primary" htmlType="submit">保存资料</Button>
-            </Form>
-          </Space>
-        </Card>
-
-        <Card className="profile-card">
-          <Space direction="vertical" size={18} style={{ width: '100%' }}>
-            <div className="profile-card-title"><LockOutlined /> 修改密码</div>
-            <Form
-              form={passwordForm}
-              layout="vertical"
-              onFinish={async (values) => {
-                if (values.newPassword !== values.confirmPassword) {
-                  message.warning('两次输入的密码不一致');
-                  return;
-                }
-                const success = await changePassword(values.currentPassword, values.newPassword);
-                if (success) passwordForm.resetFields();
-              }}
-            >
-              <Form.Item label="当前密码" name="currentPassword" rules={[{ required: true }]}>
-                <Input.Password />
-              </Form.Item>
-              <Form.Item label="新密码" name="newPassword" rules={[{ required: true }, { min: 8 }]}>
-                <Input.Password />
-              </Form.Item>
-              <Form.Item label="确认新密码" name="confirmPassword" rules={[{ required: true }]}>
-                <Input.Password />
-              </Form.Item>
-              <Button type="primary" htmlType="submit">更新密码</Button>
-            </Form>
-          </Space>
-        </Card>
-      </div>
-
+      {activeTab === 'export' && (
       <Card className="profile-card">
+        <div className="profile-card-title" style={{ marginBottom: '20px', fontSize: '18px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
+          <DownloadOutlined style={{ color: '#6366f1' }} /> 数据导出
+        </div>
         <div className="export-row">
           <div>
-            <div className="profile-card-title">学习记录导出</div>
+            <div className="profile-card-title" style={{ fontSize: '15px' }}>学习记录导出</div>
             <Text type="secondary">导出自己的学习状态、复习次数和最近学习时间。</Text>
           </div>
           <Button icon={<DownloadOutlined />} onClick={handleExport}>导出 CSV</Button>
         </div>
       </Card>
+      )}
+      </main>
+      </div>
 
       {/* The Interactive Circular Cropper Modal (Drag & Crop to perfect transparent circle) */}
       <Modal
@@ -557,6 +589,74 @@ const css = `
   margin: 0 auto;
 }
 
+.profile-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.profile-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 24px;
+  padding: 24px 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0,0,0,0.02);
+  position: sticky;
+  top: 24px;
+}
+
+.profile-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  color: #475569;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+.profile-menu-item:hover {
+  background: rgba(255, 255, 255, 0.8);
+  color: #1e293b;
+}
+
+.profile-menu-item.active {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+}
+
+.menu-icon {
+  font-size: 18px;
+  transition: transform 0.3s ease;
+}
+
+.profile-menu-item.active .menu-icon {
+  transform: scale(1.1);
+}
+
+.profile-content {
+  flex: 1;
+  min-width: 0;
+}
+
 .profile-header,
 .export-row {
   display: flex;
@@ -572,9 +672,56 @@ const css = `
 }
 
 .profile-card {
-  border-radius: 8px;
-  background: rgba(255,255,255,0.72);
-  border: 1px solid rgba(226,232,240,0.8);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0,0,0,0.02);
+  padding: 12px;
+}
+
+.profile-card .ant-card-body {
+  padding: 24px;
+}
+
+.profile-card .ant-input,
+.profile-card .ant-input-password {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: all 0.3s ease;
+  font-size: 15px;
+}
+
+.profile-card .ant-input:focus,
+.profile-card .ant-input-password.ant-input-affix-wrapper-focused {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.profile-card .ant-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  border: none;
+  border-radius: 12px;
+  height: 48px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+  transition: all 0.3s ease;
+  font-size: 16px;
+}
+
+.profile-card .ant-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(99, 102, 241, 0.3);
+}
+
+.profile-card .ant-btn-primary:active {
+  transform: translateY(0);
 }
 
 .profile-card-title {
@@ -880,6 +1027,14 @@ const css = `
 }
 
 @media (max-width: 800px) {
+  .profile-layout {
+    flex-direction: column;
+  }
+  .profile-sidebar {
+    width: 100%;
+    position: relative;
+    top: 0;
+  }
   .profile-header,
   .export-row {
     align-items: flex-start;

@@ -88,7 +88,6 @@ const normalizeMarkdown = (content = '') => {
   text = text.replace(/([^\n])\s*(#{1,6})(?=[^#\s])/g, '$1\n$2 ');
   text = text.replace(/^(\s*#{1,6})(?=[^#\s])/gm, '$1 ');
   text = text.replace(/([^\n])\s*(>\s*)(?=\S)/g, '$1\n> ');
-  text = text.replace(/([^\n])([ \t]+\|[^|\n]+\|[^|\n]+\|[^\n]*)/g, '$1\n$2');
   text = text.replace(/^(\s*)(?:[•●▪◦‣]\s*){2,}/gm, '$1- ');
   text = text.replace(/([^\n])\s+[•●▪◦‣]\s+/g, '$1\n- ');
   text = text.replace(/^(\s*)[•●▪◦‣]\s+/gm, '$1- ');

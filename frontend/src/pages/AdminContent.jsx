@@ -26,14 +26,50 @@ import { motion } from 'framer-motion';
 const { Title, Text } = Typography;
 
 // JSON parsing helpers for list fields
-const parseJsonField = (str) => {
+const parseRootsAffixes = (str) => {
   if (!str) return [];
   try {
     const parsed = JSON.parse(str);
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
-    // fallback for legacy text
-    return [{ key: '', value: str }];
+    const lines = str.split('\n').filter(Boolean);
+    return lines.map(line => {
+      const match = line.trim().match(/^(.+?)[（(](.+?)[）)]$|^(.*?)\s*[:|-]\s*(.*)$/);
+      if (match) {
+        if (match[1]) {
+          return { key: match[1].trim(), value: match[2].trim() };
+        } else {
+          return { key: match[3].trim(), value: match[4].trim() };
+        }
+      }
+      return { key: '', value: line.trim() };
+    });
+  }
+};
+
+const parseDerivatives = (str) => {
+  if (!str) return [];
+  try {
+    const parsed = JSON.parse(str);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    const lines = (str.includes('\n') 
+      ? str.split('\n') 
+      : str.split(/[,;]\s*(?=[a-zA-Z-]+\s*\|)/)
+    ).filter(Boolean);
+    
+    return lines.map(line => {
+      const parts = line.split('|');
+      if (parts.length < 2) {
+        const match = line.trim().match(/^(.+?)[（(](.+?)[）)]$|^(.*?)\s*[:|-]\s*(.*)$/);
+        if (match) {
+          if (match[1]) return { key: match[1].trim(), value: match[2].trim() };
+          return { key: match[3].trim(), value: match[4].trim() };
+        }
+        return { key: '', value: line.trim() };
+      }
+      return { key: parts[0].trim(), value: parts.slice(1).join('|').trim() };
+    });
   }
 };
 
@@ -74,16 +110,12 @@ const AdminContent = () => {
         params: { keyword: nextKeyword || undefined, limit: 60 },
       });
       setWords(response.data);
-      if (!selectedWord && response.data.length > 0) {
-        setSelectedWord(response.data[0]);
-        form.setFieldsValue(response.data[0]);
-      }
     } catch (error) {
       console.error('搜索单词失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [form, keyword, selectedWord]);
+  }, [keyword]);
 
   useEffect(() => {
     void fetchWords('');
@@ -108,6 +140,26 @@ const AdminContent = () => {
 
   const handleExpandChapter = async (keys) => {
     setExpandedKeys(keys);
+    const activeKey = keys.length > 0 ? keys[0] : null;
+
+    const scrollToPanel = () => {
+      if (activeKey) {
+        setTimeout(() => {
+          const panelElement = document.getElementById(`chapter-panel-${activeKey}`);
+          const container = panelElement?.closest('.admin-word-list');
+          if (panelElement && container) {
+            const containerRect = container.getBoundingClientRect();
+            const panelRect = panelElement.getBoundingClientRect();
+            const relativeTop = Math.max(0, panelRect.top - containerRect.top + container.scrollTop - 12);
+            container.scrollTo({
+              top: relativeTop,
+              behavior: 'smooth'
+            });
+          }
+        }, 300);
+      }
+    };
+
     const newKey = keys.find(k => !chapterGroups[k]);
     if (newKey) {
       setLoadingPanel(newKey);
@@ -115,11 +167,14 @@ const AdminContent = () => {
         const res = await apiClient.get(`/api/chapters/${newKey}/groups`);
         const sorted = sortGroupsByGroupId(res.data);
         setChapterGroups(prev => ({ ...prev, [newKey]: sorted }));
+        scrollToPanel();
       } catch (error) {
         message.error('加载分组失败');
       } finally {
         setLoadingPanel(null);
       }
+    } else {
+      scrollToPanel();
     }
   };
 
@@ -140,8 +195,8 @@ const AdminContent = () => {
     setSelectedWord(word);
     form.setFieldsValue({
       ...word,
-      roots_affixes: parseJsonField(word.roots_affixes),
-      derivatives: parseJsonField(word.derivatives)
+      roots_affixes: parseRootsAffixes(word.roots_affixes),
+      derivatives: parseDerivatives(word.derivatives)
     });
   };
 
@@ -317,102 +372,104 @@ const AdminContent = () => {
                   loadingDirectory ? (
                     <div style={{ textAlign: 'center', padding: '40px 0' }}><Spin /></div>
                   ) : (
-                    <Collapse 
-                      accordion
-                      ghost 
-                      activeKey={expandedKeys} 
-                      onChange={handleExpandChapter}
-                      expandIcon={({ isActive }) => <RightOutlined rotate={isActive ? 90 : 0} style={{ color: '#9ca3af' }}/>}
-                    >
-                      {chapters.map(chapter => (
-                        <Collapse.Panel 
-                          key={String(chapter.chapterNo)} 
-                          header={
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <div className="admin-word-list" style={{ height: '570px', overflowY: 'auto' }}>
+                      <Collapse 
+                        accordion
+                        ghost 
+                        activeKey={expandedKeys} 
+                        onChange={handleExpandChapter}
+                        expandIcon={({ isActive }) => <RightOutlined rotate={isActive ? 90 : 0} style={{ color: '#9ca3af' }}/>}
+                      >
+                        {chapters.map(chapter => (
+                          <Collapse.Panel 
+                            key={String(chapter.chapterNo)} 
+                            header={
+                            <div id={`chapter-panel-${chapter.chapterNo}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                               <Text strong style={{ color: '#1f2937', fontSize: 14 }}>{formatChapterTitle(chapter.chapterNo, chapter.chapterName)}</Text>
-                              <Badge count={chapter.groupCount} style={{ backgroundColor: 'rgba(17, 24, 39, 0.05)', color: '#4b5563', boxShadow: 'none' }} />
-                            </div>
-                          }
-                        >
-                          {loadingPanel === String(chapter.chapterNo) ? (
-                            <div style={{ textAlign: 'center', padding: 12 }}><Spin size="small" /></div>
-                          ) : (
-                            <div style={{ 
-                              border: '2px dashed rgba(156, 163, 175, 0.3)',
-                              borderRadius: '16px',
-                              background: 'rgba(255, 255, 255, 0.4)',
-                              overflow: 'hidden',
-                              position: 'relative'
-                            }}>
-                              <div 
-                                ref={el => { groupListRefs.current[chapter.chapterNo] = el; }}
-                                style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '174px', overflowY: 'auto', padding: '8px' }}
-                                className="custom-scroll"
-                              >
-                                {(chapterGroups[chapter.chapterNo] || []).map(group => (
-                                  <div 
-                                    key={group.groupId}
-                                    className="admin-directory-group-item"
-                                    onClick={() => handleGroupSelect(chapter.chapterNo, group)}
-                                  >
-                                    <div>
-                                      <div className="admin-group-id">{group.groupId}</div>
-                                      <div className="admin-group-theme">{group.groupTheme}</div>
-                                    </div>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>{group.wordCount} 词</Text>
-                                  </div>
-                                ))}
+                                <Badge count={chapter.groupCount} style={{ backgroundColor: 'rgba(17, 24, 39, 0.05)', color: '#4b5563', boxShadow: 'none' }} />
                               </div>
-                              {/* Back-to-top arrow */}
-                              {(chapterGroups[chapter.chapterNo] || []).length > 3 && (
-                                <div
-                                  style={{
-                                    position: 'sticky',
-                                    bottom: 0,
-                                    display: 'flex',
-                                    justifyContent: 'center',
-                                    paddingTop: 4,
-                                    paddingBottom: 6,
-                                    background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.85) 60%)',
-                                    pointerEvents: 'none'
-                                  }}
+                            }
+                          >
+                            {loadingPanel === String(chapter.chapterNo) ? (
+                              <div style={{ textAlign: 'center', padding: 12 }}><Spin size="small" /></div>
+                            ) : (
+                              <div style={{ 
+                                border: '2px dashed rgba(156, 163, 175, 0.3)',
+                                borderRadius: '16px',
+                                background: 'rgba(255, 255, 255, 0.4)',
+                                overflow: 'hidden',
+                                position: 'relative'
+                              }}>
+                                <div 
+                                  ref={el => { groupListRefs.current[chapter.chapterNo] = el; }}
+                                  style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '174px', overflowY: 'auto', padding: '8px' }}
+                                  className="custom-scroll"
                                 >
-                                  <button
-                                    title="回到第一个 Group"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const el = groupListRefs.current[chapter.chapterNo];
-                                      if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
-                                    }}
-                                    style={{
-                                      pointerEvents: 'auto',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      padding: '3px 12px',
-                                      borderRadius: 20,
-                                      border: '1px solid rgba(209, 213, 219, 0.6)',
-                                      background: 'rgba(255,255,255,0.9)',
-                                      color: '#4b5563',
-                                      fontSize: 12,
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                                      transition: 'all 0.2s'
-                                    }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(243,244,246,1)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.9)'; }}
-                                  >
-                                    <VerticalAlignTopOutlined style={{ fontSize: 13 }} />
-                                    <span>回顶</span>
-                                  </button>
+                                  {(chapterGroups[chapter.chapterNo] || []).map(group => (
+                                    <div 
+                                      key={group.groupId}
+                                      className="admin-directory-group-item"
+                                      onClick={() => handleGroupSelect(chapter.chapterNo, group)}
+                                    >
+                                      <div>
+                                        <div className="admin-group-id">{group.groupId}</div>
+                                        <div className="admin-group-theme">{group.groupTheme}</div>
+                                      </div>
+                                      <Text type="secondary" style={{ fontSize: 12 }}>{group.wordCount} 词</Text>
+                                    </div>
+                                  ))}
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </Collapse.Panel>
-                      ))}
-                    </Collapse>
+                                {/* Back-to-top arrow */}
+                                {(chapterGroups[chapter.chapterNo] || []).length > 3 && (
+                                  <div
+                                    style={{
+                                      position: 'sticky',
+                                      bottom: 0,
+                                      display: 'flex',
+                                      justifyContent: 'center',
+                                      paddingTop: 4,
+                                      paddingBottom: 6,
+                                      background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.85) 60%)',
+                                      pointerEvents: 'none'
+                                    }}
+                                  >
+                                    <button
+                                      title="回到第一个 Group"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const el = groupListRefs.current[chapter.chapterNo];
+                                        if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                                      }}
+                                      style={{
+                                        pointerEvents: 'auto',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        padding: '3px 12px',
+                                        borderRadius: 20,
+                                        border: '1px solid rgba(209, 213, 219, 0.6)',
+                                        background: 'rgba(255,255,255,0.9)',
+                                        color: '#4b5563',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                                        transition: 'all 0.2s'
+                                      }}
+                                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(243,244,246,1)'; }}
+                                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.9)'; }}
+                                    >
+                                      <VerticalAlignTopOutlined style={{ fontSize: 13 }} />
+                                      <span>回顶</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Collapse.Panel>
+                        ))}
+                      </Collapse>
+                    </div>
                   )
                 )}
               </div>
@@ -424,31 +481,33 @@ const AdminContent = () => {
         <Card className="admin-content-card editor-card shadow-glass">
           {selectedWord ? (
             <Form form={form} layout="vertical" onFinish={handleSubmitAttempt}>
-              <div className="editor-title-wrap">
-                <div className="editor-header-flashcard">
-                  <div className="editor-header-top">
-                    <div className="editor-title-badge">
-                      <EditOutlined /> 修改内容
+              {searchMode !== 'directory' && (
+                <div className="editor-title-wrap">
+                  <div className="editor-header-flashcard">
+                    <div className="editor-header-top">
+                      <div className="editor-title-badge">
+                        <EditOutlined /> 修改内容
+                      </div>
                     </div>
-                  </div>
-                  <div className="editor-word-display-row">
-                    <div className="editor-word-display">
-                      {selectedWord.word}
-                    </div>
-                    <div className="editor-tags-row">
-                      <span className="editor-glass-tag">🔖 {selectedWord.chapterName}</span>
-                      <span className="editor-glass-tag">🎯 {selectedWord.groupTheme}</span>
+                    <div className="editor-word-display-row">
+                      <div className="editor-word-display">
+                        {selectedWord.word}
+                      </div>
+                      <div className="editor-tags-row">
+                        <span className="editor-glass-tag">🔖 {selectedWord.chapterName}</span>
+                        <span className="editor-glass-tag">🎯 {selectedWord.groupTheme}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="editor-form-scrollbox">
                 {/* Bento Module A1: Core Explanation */}
-                <div className="bento-module-card">
-                  <div className="bento-module-title">
-                    <BookOutlined style={{ color: '#6366f1' }} /> 核心释义
-                  </div>
+                <div className="bento-module-title" style={{ top: '0px' }}>
+                  <BookOutlined style={{ color: '#6366f1' }} /> 核心释义
+                </div>
+                <div className="bento-module-content-card">
                   <Form.Item
                     name="explanation"
                     rules={[{ required: true, message: '请输入词义释义' }]}
@@ -458,81 +517,93 @@ const AdminContent = () => {
                   </Form.Item>
                 </div>
 
-                  {/* Bento Module A2: Roots & Affixes */}
-                  <div className="bento-module-card" style={{ background: 'rgba(239, 246, 255, 0.4)', borderColor: 'rgba(191, 219, 254, 0.8)' }}>
-                    <div className="bento-module-title" style={{ color: '#2563eb' }}>
-                      <NodeIndexOutlined /> 词根词缀
-                    </div>
-                    <Form.List name="roots_affixes">
-                      {(fields, { add, remove }) => (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {fields.map(({ key, name, ...restField }) => (
-                            <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'key']}
-                                style={{ marginBottom: 0, flex: 1 }}
-                              >
-                                <Input placeholder="词根" className="input-field-glass table-input-blue" />
-                              </Form.Item>
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'value']}
-                                style={{ marginBottom: 0, flex: 2 }}
-                              >
-                                <Input placeholder="含义 (例: 空气)" className="input-field-glass table-input-blue" />
-                              </Form.Item>
-                              <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#94a3b8', fontSize: 16, cursor: 'pointer' }} />
-                            </div>
-                          ))}
-                          <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ borderColor: 'rgba(59, 130, 246, 0.4)', color: '#3b82f6', borderRadius: 10, background: 'transparent' }}>
-                            添加词根
-                          </Button>
-                        </div>
-                      )}
-                    </Form.List>
-                  </div>
+                {/* Bento Module A2: Roots & Affixes */}
+                <div className="bento-module-title" style={{ top: '46px', background: 'rgba(239, 246, 255, 0.95)', borderColor: 'rgba(191, 219, 254, 0.8)', color: '#2563eb' }}>
+                  <NodeIndexOutlined /> 词根词缀
+                </div>
+                <div className="bento-module-content-card" style={{ background: 'rgba(239, 246, 255, 0.4)', borderColor: 'rgba(191, 219, 254, 0.8)', borderTop: 'none' }}>
+                  <Form.List name="roots_affixes">
+                    {(fields, { add, remove }) => (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {fields.length > 0 && (
+                          <div style={{ display: 'flex', gap: 8, paddingRight: 24, paddingLeft: 4, fontSize: '12px', fontWeight: 'bold', color: '#1e3a8a', marginBottom: 2 }}>
+                            <div style={{ flex: 1 }}>词根</div>
+                            <div style={{ flex: 2 }}>释义</div>
+                          </div>
+                        )}
+                        {fields.map(({ key, name, ...restField }) => (
+                          <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'key']}
+                              style={{ marginBottom: 0, flex: 1 }}
+                            >
+                              <Input placeholder="词根" className="input-field-glass table-input-blue" />
+                            </Form.Item>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'value']}
+                              style={{ marginBottom: 0, flex: 2 }}
+                            >
+                              <Input placeholder="含义 (例: 空气)" className="input-field-glass table-input-blue" />
+                            </Form.Item>
+                            <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#94a3b8', fontSize: 16, cursor: 'pointer' }} />
+                          </div>
+                        ))}
+                        <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ borderColor: 'rgba(59, 130, 246, 0.4)', color: '#3b82f6', borderRadius: 10, background: 'transparent' }}>
+                          添加词根
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                </div>
 
-                  {/* Bento Module A3: Derivatives */}
-                  <div className="bento-module-card" style={{ background: 'rgba(240, 253, 244, 0.4)', borderColor: 'rgba(187, 247, 208, 0.8)' }}>
-                    <div className="bento-module-title" style={{ color: '#16a34a' }}>
-                      <BranchesOutlined /> 派生词汇
-                    </div>
-                    <Form.List name="derivatives">
-                      {(fields, { add, remove }) => (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {fields.map(({ key, name, ...restField }) => (
-                            <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'key']}
-                                style={{ marginBottom: 0, flex: 1 }}
-                              >
-                                <Input placeholder="派生词" className="input-field-glass table-input-green" />
-                              </Form.Item>
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'value']}
-                                style={{ marginBottom: 0, flex: 2 }}
-                              >
-                                <Input placeholder="含义 (例: 大气的)" className="input-field-glass table-input-green" />
-                              </Form.Item>
-                              <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#94a3b8', fontSize: 16, cursor: 'pointer' }} />
-                            </div>
-                          ))}
-                          <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ borderColor: 'rgba(34, 197, 94, 0.4)', color: '#22c55e', borderRadius: 10, background: 'transparent' }}>
-                            添加派生词
-                          </Button>
-                        </div>
-                      )}
-                    </Form.List>
-                  </div>
+                {/* Bento Module A3: Derivatives */}
+                <div className="bento-module-title" style={{ top: '92px', background: 'rgba(240, 253, 244, 0.95)', borderColor: 'rgba(187, 247, 208, 0.8)', color: '#16a34a' }}>
+                  <BranchesOutlined /> 派生词汇
+                </div>
+                <div className="bento-module-content-card" style={{ background: 'rgba(240, 253, 244, 0.4)', borderColor: 'rgba(187, 247, 208, 0.8)', borderTop: 'none' }}>
+                  <Form.List name="derivatives">
+                    {(fields, { add, remove }) => (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {fields.length > 0 && (
+                          <div style={{ display: 'flex', gap: 8, paddingRight: 24, paddingLeft: 4, fontSize: '12px', fontWeight: 'bold', color: '#14532d', marginBottom: 2 }}>
+                            <div style={{ flex: 1 }}>派生词</div>
+                            <div style={{ flex: 2 }}>释义</div>
+                          </div>
+                        )}
+                        {fields.map(({ key, name, ...restField }) => (
+                          <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'key']}
+                              style={{ marginBottom: 0, flex: 1 }}
+                            >
+                              <Input placeholder="派生词" className="input-field-glass table-input-green" />
+                            </Form.Item>
+                            <Form.Item
+                              {...restField}
+                              name={[name, 'value']}
+                              style={{ marginBottom: 0, flex: 2 }}
+                            >
+                              <Input placeholder="含义 (例: 大气的)" className="input-field-glass table-input-green" />
+                            </Form.Item>
+                            <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#94a3b8', fontSize: 16, cursor: 'pointer' }} />
+                          </div>
+                        ))}
+                        <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ borderColor: 'rgba(34, 197, 94, 0.4)', color: '#22c55e', borderRadius: 10, background: 'transparent' }}>
+                          添加派生词
+                        </Button>
+                      </div>
+                    )}
+                  </Form.List>
+                </div>
 
-                {/* Bento Module A3: Word Note */}
-                <div className="bento-module-card">
-                  <div className="bento-module-title">
-                    <HighlightOutlined style={{ color: '#f59e0b' }} /> 单词备注
-                  </div>
+                {/* Bento Module A4: Word Note */}
+                <div className="bento-module-title" style={{ top: '138px' }}>
+                  <HighlightOutlined style={{ color: '#f59e0b' }} /> 单词备注
+                </div>
+                <div className="bento-module-content-card">
                   <Form.Item
                     name="word_note"
                     style={{ marginBottom: 0 }}
@@ -542,10 +613,10 @@ const AdminContent = () => {
                 </div>
 
                 {/* Bento Module B: Phonetics */}
-                <div className="bento-module-card">
-                  <div className="bento-module-title">
-                    <SoundOutlined style={{ color: '#8b5cf6' }} /> 发音区块
-                  </div>
+                <div className="bento-module-title" style={{ top: '184px' }}>
+                  <SoundOutlined style={{ color: '#8b5cf6' }} /> 发音区块
+                </div>
+                <div className="bento-module-content-card">
                   <div className="phonetic-grid">
                     <Form.Item
                       name="phonetics_uk"
@@ -563,10 +634,10 @@ const AdminContent = () => {
                 </div>
 
                 {/* Bento Module C: Context & Example */}
-                <div className="bento-module-card module-context">
-                  <div className="bento-module-title">
-                    <MessageOutlined style={{ color: '#3b82f6' }} /> 语境与例句
-                  </div>
+                <div className="bento-module-title" style={{ top: '230px', background: 'rgba(240, 249, 255, 0.95)', borderColor: 'rgba(191, 219, 254, 0.8)' }}>
+                  <MessageOutlined style={{ color: '#3b82f6' }} /> 语境与例句
+                </div>
+                <div className="bento-module-content-card module-context" style={{ background: 'rgba(240, 249, 255, 0.4)', borderColor: 'rgba(191, 219, 254, 0.8)', borderTop: 'none' }}>
                   <Form.Item
                     name="exampleSentence"
                     style={{ marginBottom: 12 }}
@@ -689,8 +760,9 @@ const css = `
 
 .admin-content-grid {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 380px minmax(0, 720px);
+  justify-content: center;
+  gap: 32px;
   align-items: start;
 }
 
@@ -701,10 +773,24 @@ const css = `
   backdrop-filter: blur(12px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.02);
   overflow: hidden;
+  height: 720px;
 }
 
 .admin-content-card .ant-card-body {
   padding: 24px;
+}
+
+.editor-card .ant-card-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-card form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 /* Left List layout */
@@ -727,7 +813,7 @@ const css = `
 }
 
 .admin-word-list {
-  max-height: 600px;
+  height: 570px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -977,13 +1063,13 @@ const css = `
 }
 
 .editor-form-scrollbox {
-  max-height: 520px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 12px;
   margin-bottom: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
 }
 .editor-form-scrollbox::-webkit-scrollbar { width: 5px; }
 .editor-form-scrollbox::-webkit-scrollbar-thumb {
@@ -1004,15 +1090,40 @@ const css = `
   border-color: rgba(99, 102, 241, 0.3);
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.06);
 }
+
 .bento-module-title {
+  position: sticky;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 15px;
   font-weight: 700;
   color: #334155;
-  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  padding: 12px 20px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
 }
+
+.bento-module-content-card {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-top: none;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  margin-bottom: 20px;
+  transition: all 0.3s ease;
+}
+.bento-module-content-card:focus-within {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.06);
+}
+
 .module-context {
   background: rgba(240, 249, 255, 0.4);
 }
