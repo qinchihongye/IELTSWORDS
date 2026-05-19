@@ -588,32 +588,39 @@ const css = `
 
 .profile-avatar-panel {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .profile-avatar-preview {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 24px;
+  align-items: center;
+  gap: 20px;
+  padding: 32px 24px;
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(99, 102, 241, 0.07) 0%, rgba(255, 255, 255, 0.92) 100%);
   border: 1px solid rgba(99, 102, 241, 0.12);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .profile-avatar-preview__copy {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 8px;
 }
 
 .profile-avatar-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  width: 100%;
 }
 
 .profile-avatar-picker {
@@ -662,6 +669,30 @@ const css = `
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+  max-height: 232px;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-right: -6px;
+  padding-bottom: 2px;
+}
+
+.profile-avatar-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.profile-avatar-grid::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.01);
+  border-radius: 3px;
+}
+
+.profile-avatar-grid::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.16);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.profile-avatar-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.36);
 }
 
 .profile-avatar-option {

@@ -414,17 +414,26 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {(() => {
-                            const lines = word.roots_affixes.split('\n').filter(Boolean);
-                            const parsedLines = lines.map(line => {
-                              const match = line.trim().match(/^(.+?)（(.+?)）$/);
-                              if (match) return { root: match[1].trim(), meaning: match[2].trim() };
-                              return { raw: line.trim() };
-                            });
+                            let parsedLines = [];
+                            try {
+                              const jsonObj = JSON.parse(word.roots_affixes);
+                              if (Array.isArray(jsonObj)) {
+                                parsedLines = jsonObj.map(item => ({ root: item.key, meaning: item.value }));
+                              }
+                            } catch (e) {
+                              const lines = word.roots_affixes.split('\n').filter(Boolean);
+                              parsedLines = lines.map(line => {
+                                const match = line.trim().match(/^(.+?)（(.+?)）$/);
+                                if (match) return { root: match[1].trim(), meaning: match[2].trim() };
+                                return { raw: line.trim() };
+                              });
+                            }
+                            
                             const maxRootLen = Math.max(...parsedLines.map(p => (p.root || '').length));
                             const rootColWidth = Math.max(80, Math.min(maxRootLen * 11 + 16, 180));
 
                             return parsedLines.map((item, idx) => {
-                              if (!item.root) {
+                              if (!item.root && item.raw) {
                                 return <div key={idx} style={{ fontSize: '15px', color: '#1e3a8a', lineHeight: 1.5 }}>{item.raw}</div>;
                               }
                               return (
@@ -460,22 +469,30 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {(() => {
-                            const lines = (word.derivatives.includes('\n') 
-                              ? word.derivatives.split('\n') 
-                              : word.derivatives.split(/[,;]\s*(?=[a-zA-Z-]+\s*\|)/)
-                            ).filter(Boolean);
+                            let parsedLines = [];
+                            try {
+                              const jsonObj = JSON.parse(word.derivatives);
+                              if (Array.isArray(jsonObj)) {
+                                parsedLines = jsonObj.map(item => ({ word: item.key, meaning: item.value }));
+                              }
+                            } catch (e) {
+                              const lines = (word.derivatives.includes('\n') 
+                                ? word.derivatives.split('\n') 
+                                : word.derivatives.split(/[,;]\s*(?=[a-zA-Z-]+\s*\|)/)
+                              ).filter(Boolean);
+                              
+                              parsedLines = lines.map(line => {
+                                const parts = line.split('|');
+                                if (parts.length < 2) return { raw: line.trim() };
+                                return { word: parts[0].trim(), meaning: parts.slice(1).join('|').trim() };
+                              });
+                            }
                             
-                            // 计算最长单词的宽度，用于对齐
-                            const parsedLines = lines.map(line => {
-                              const parts = line.split('|');
-                              if (parts.length < 2) return { raw: line.trim() };
-                              return { word: parts[0].trim(), meaning: parts.slice(1).join('|').trim() };
-                            });
                             const maxWordLen = Math.max(...parsedLines.map(p => (p.word || '').length));
                             const wordColWidth = Math.max(100, Math.min(maxWordLen * 10 + 16, 200));
 
                             return parsedLines.map((item, idx) => {
-                              if (!item.word) {
+                              if (!item.word && item.raw) {
                                 return <div key={idx} style={{ fontSize: '15px', color: '#14532d', lineHeight: 1.5 }}>{item.raw}</div>;
                               }
                               return (

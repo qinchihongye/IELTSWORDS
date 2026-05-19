@@ -1,50 +1,6 @@
 import apiClient from '../api/client';
 import config from '../config/settings';
 
-const BUILTIN_AVATAR_FILES = [
-  '花舞霓裳.png',
-  '万华镜.png',
-  '三河千鸟.png',
-  '恋物语.png',
-  '无尽夏.png',
-  '石灰灯.png',
-  '花手鞠.png',
-  '薄荷拇指.png',
-  '香草草莓.png',
-  '魔幻海洋.png',
-  '坦尼克.png',
-  '白二岐.png',
-  '萨利安.png',
-  '白锦龟背竹.png',
-  '绿天鹅绒.png',
-  '银虎.png',
-  '黑桃.png',
-  '婉尼拉.png',
-];
-
-const LEGACY_BUILTIN_AVATAR_FILES = [
-  '万华镜.png',
-  '三河千鸟.png',
-  '恋物语.png',
-  '无尽夏.png',
-  '石灰灯.png',
-  '花手鞠.png',
-  '花舞霓裳.png',
-  '薄荷拇指.png',
-  '香草草莓.png',
-  '魔幻海洋.png',
-];
-
-export const DEFAULT_BUILTIN_AVATAR_KEY = '万华镜.png';
-const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
-  '花舞霓裳.png',
-  '石灰灯.png',
-  '香草草莓.png',
-  '白二岐.png',
-  '幻想曲.png',
-  '雪后.png',
-]);
-
 const builtinAvatarModules = import.meta.glob(
   [
     '../assets/builtin-avatars/*.png',
@@ -57,6 +13,30 @@ const builtinAvatarModules = import.meta.glob(
     import: 'default',
   }
 );
+
+const BUILTIN_AVATAR_FILES = Object.keys(builtinAvatarModules).map(path => path.split('/').pop());
+
+const LEGACY_BUILTIN_AVATAR_FILES = [
+  '三河千鸟.png',
+  '恋物语.png',
+  '无尽夏.png',
+  '石灰灯.png',
+  '花舞霓裳.png',
+  '香草草莓.png',
+  '魔幻海洋.png',
+];
+
+export const DEFAULT_BUILTIN_AVATAR_KEY = BUILTIN_AVATAR_FILES.includes('恋物语.png') ? '恋物语.png' : (BUILTIN_AVATAR_FILES[0] || '');
+const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
+  '花舞霓裳.png',
+  '石灰灯.png',
+  '香草草莓.png',
+  '白二岐.png',
+  '幻想曲.png',
+  '雪后.png',
+]);
+
+
 
 const BUILTIN_AVATAR_SRC_BY_FILE = Object.fromEntries(
   Object.entries(builtinAvatarModules).map(([path, src]) => [path.split('/').pop(), src])

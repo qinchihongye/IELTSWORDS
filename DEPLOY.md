@@ -1,55 +1,55 @@
-# IELTSWORDS Deployment Guide
+# IELTSWORDS 部署指南
 
-This guide describes a conservative production deployment for the IELTSWORDS app.
+本文档说明如何以较稳妥的方式，将 IELTSWORDS 部署到生产环境。
 
-The recommended shape is:
+推荐的部署结构如下：
 
-- Nginx serves `frontend/dist`
-- Nginx proxies `/api`, `/health`, `/docs` to FastAPI
-- FastAPI runs under `systemd`
-- SQLite is backed up with the SQLite online backup command
-- The project root `.env` is the single source of runtime configuration
+- 使用 Nginx 提供 `frontend/dist` 静态文件
+- 使用 Nginx 将 `/api`、`/health`、`/docs` 反向代理到 FastAPI
+- 使用 `systemd` 托管 FastAPI 进程
+- 使用 SQLite 在线备份命令备份数据库
+- 以项目根目录的 `.env` 作为唯一运行时配置来源
 
-## 1. Prepare The Server
+## 1. 准备服务器
 
-Install system dependencies:
+安装系统依赖：
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip nodejs npm nginx sqlite3
 ```
 
-Create an app directory:
+创建应用目录：
 
 ```bash
 sudo mkdir -p /opt/ieltswords
 sudo chown "$USER":"$USER" /opt/ieltswords
 ```
 
-Copy the project to `/opt/ieltswords`.
+将项目复制到 `/opt/ieltswords`。
 
-## 2. Create The Unified `.env`
+## 2. 创建统一的 `.env`
 
-Create the project environment file:
+创建项目环境文件：
 
 ```bash
 cd /opt/ieltswords
 cp .env.example .env
 ```
 
-Generate a strong `SECRET_KEY`:
+生成高强度 `SECRET_KEY`：
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Generate a strong `FERNET_KEY`:
+生成高强度 `FERNET_KEY`：
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Edit `/opt/ieltswords/.env` and update at least these values:
+编辑 `/opt/ieltswords/.env`，至少更新以下配置：
 
 - `ENVIRONMENT=production`
 - `SERVER_HOST=127.0.0.1`
@@ -59,21 +59,21 @@ Edit `/opt/ieltswords/.env` and update at least these values:
 - `CORS_ORIGINS=https://example.com`
 - `VITE_API_BASE_URL=https://example.com`
 
-Keep these values stable unless you intentionally move files:
+除非你明确要调整文件位置，否则以下配置应保持不变：
 
 - `DATABASE_URL`
 - `SOURCE_DATABASE_URL`
 
-Optional AI defaults:
+可选的 AI 默认配置：
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
 - `AI_REQUEST_TIMEOUT_SECONDS`
 
-## 3. Backend Environment
+## 3. 后端环境
 
-Create a Python virtual environment:
+创建 Python 虚拟环境：
 
 ```bash
 cd /opt/ieltswords
@@ -81,16 +81,16 @@ python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 ```
 
-Initialize the app database if needed:
+如有需要，初始化应用数据库：
 
 ```bash
 cd /opt/ieltswords
 .venv/bin/python backend/scripts/init_db.py
 ```
 
-## 4. Frontend Build
+## 4. 构建前端
 
-Build:
+执行构建：
 
 ```bash
 cd /opt/ieltswords/frontend
@@ -98,11 +98,11 @@ npm install
 npm run build
 ```
 
-`VITE_API_BASE_URL` will be read from the project root `.env`.
+`VITE_API_BASE_URL` 会从项目根目录的 `.env` 中读取。
 
-## 5. systemd Backend Service
+## 5. 使用 systemd 托管后端服务
 
-Install the service template:
+安装服务模板：
 
 ```bash
 sudo cp /opt/ieltswords/deploy/systemd/ieltswords-backend.service.example /etc/systemd/system/ieltswords-backend.service
@@ -111,72 +111,72 @@ sudo systemctl enable --now ieltswords-backend
 sudo systemctl status ieltswords-backend
 ```
 
-View logs:
+查看日志：
 
 ```bash
 journalctl -u ieltswords-backend -f
 ```
 
-## 6. Nginx
+## 6. 配置 Nginx
 
-Install the Nginx template:
+安装 Nginx 配置模板：
 
 ```bash
 sudo cp /opt/ieltswords/deploy/nginx/ieltswords.conf.example /etc/nginx/sites-available/ieltswords
 sudo ln -s /etc/nginx/sites-available/ieltswords /etc/nginx/sites-enabled/ieltswords
 ```
 
-Edit `/etc/nginx/sites-available/ieltswords` and replace:
+编辑 `/etc/nginx/sites-available/ieltswords`，替换以下内容：
 
 - `example.com`
 - `/opt/ieltswords`
 
-Then test and reload:
+然后测试并重载：
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Add HTTPS with your preferred certificate tool, for example Certbot.
+再使用你习惯的证书工具配置 HTTPS，例如 Certbot。
 
-## 7. Backup
+## 7. 备份
 
-Run a manual SQLite backup:
+手动执行一次 SQLite 备份：
 
 ```bash
 cd /opt/ieltswords
 bash deploy/scripts/backup_sqlite.sh
 ```
 
-Example daily cron:
+每日定时任务示例：
 
 ```cron
 15 3 * * * cd /opt/ieltswords && bash deploy/scripts/backup_sqlite.sh >> /var/log/ieltswords-backup.log 2>&1
 ```
 
-Test restore at least once before public launch.
+正式对外开放前，至少完整测试一次恢复流程。
 
-## 8. Predeploy Check
+## 8. 部署前检查
 
-Before release:
+发布前执行：
 
 ```bash
 cd /opt/ieltswords
 bash deploy/scripts/predeploy_check.sh
 ```
 
-It checks frontend lint/build, Python syntax, required files, and common deployment mistakes.
+该脚本会检查前端 lint / build、Python 语法、必要文件，以及一些常见部署错误。
 
-## 9. Launch Checklist
+## 9. 上线检查清单
 
-- `/opt/ieltswords/.env` exists and is readable by the app user
-- `.env` has strong `SECRET_KEY` and `FERNET_KEY`
-- `.env` uses production `CORS_ORIGINS`
-- `.env` points `VITE_API_BASE_URL` to the public backend URL
-- `npm run build` passes
-- `deploy/scripts/predeploy_check.sh` passes
-- SQLite backup works
-- Nginx serves the frontend
-- `/health` returns healthy through the public domain
-- Login, learning, image viewing, review, quiz, mistake book, and check-in flows are tested
+- `/opt/ieltswords/.env` 已存在，并且应用运行用户有读取权限
+- `.env` 中已设置高强度 `SECRET_KEY` 和 `FERNET_KEY`
+- `.env` 中的 `CORS_ORIGINS` 已配置为生产环境域名
+- `.env` 中的 `VITE_API_BASE_URL` 已指向公网后端地址
+- `npm run build` 能成功通过
+- `deploy/scripts/predeploy_check.sh` 能成功通过
+- SQLite 备份可正常执行
+- Nginx 能正常提供前端页面
+- 通过公网域名访问 `/health` 能返回 healthy
+- 登录、学习、看图、复习、测验、错词本、打卡等核心流程均已测试

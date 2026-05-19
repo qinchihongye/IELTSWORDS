@@ -18,26 +18,13 @@ BUILTIN_AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 AVATAR_URL_PREFIX = "/uploads/avatars"
 BUILTIN_AVATAR_URL_PREFIX = "/builtin-avatars"
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
-BUILTIN_AVATAR_KEYS = [
-    "花舞霓裳.png",
-    "万华镜.png",
-    "三河千鸟.png",
-    "恋物语.png",
-    "无尽夏.png",
-    "石灰灯.png",
-    "花手鞠.png",
-    "薄荷拇指.png",
-    "香草草莓.png",
-    "魔幻海洋.png",
-    "坦尼克.png",
-    "白二岐.png",
-    "萨利安.png",
-    "白锦龟背竹.png",
-    "绿天鹅绒.png",
-    "银虎.png",
-    "黑桃.png",
-    "婉尼拉.png",
-]
+_ALLOWED_SUFFIXES_FOR_BUILTIN = {".png", ".jpg", ".jpeg", ".webp"}
+BUILTIN_AVATAR_KEYS = []
+if BUILTIN_AVATAR_UPLOAD_DIR.exists():
+    BUILTIN_AVATAR_KEYS = [
+        f.name for f in BUILTIN_AVATAR_UPLOAD_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in _ALLOWED_SUFFIXES_FOR_BUILTIN
+    ]
 VIP_ONLY_BUILTIN_AVATAR_KEYS = {
     "花舞霓裳.png",
     "石灰灯.png",
@@ -47,18 +34,15 @@ VIP_ONLY_BUILTIN_AVATAR_KEYS = {
     "雪后.png",
 }
 LEGACY_BUILTIN_AVATAR_KEYS = [
-    "万华镜.png",
     "三河千鸟.png",
     "恋物语.png",
     "无尽夏.png",
     "石灰灯.png",
-    "花手鞠.png",
     "花舞霓裳.png",
-    "薄荷拇指.png",
     "香草草莓.png",
     "魔幻海洋.png",
 ]
-DEFAULT_BUILTIN_AVATAR_KEY = "万华镜.png"
+DEFAULT_BUILTIN_AVATAR_KEY = "恋物语.png"
 RENAMED_BUILTIN_AVATAR_KEY_MAP = {
     "石头灯.png": "石灰灯.png",
     "坦尼克.jpg": "坦尼克.png",

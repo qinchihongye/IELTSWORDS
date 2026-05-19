@@ -63,7 +63,8 @@ const Home = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const leaderboardListRef = useRef(null);
-  const [chapterExpanded, setChapterExpanded] = useState(true);
+  const [chapterExpanded, setChapterExpanded] = useState(false);
+
   const {
     stats,
     fetchStats,
