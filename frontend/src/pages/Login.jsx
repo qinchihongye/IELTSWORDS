@@ -408,6 +408,7 @@ const css = `
 
 .login-container {
   display: flex;
+  justify-content: center;
   min-height: 100vh;
   background-color: #f8fafc;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -513,7 +514,8 @@ const css = `
 
 /* --- Left Hero Section --- */
 .login-hero-section {
-  flex: 1;
+  width: 50%;
+  max-width: 650px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -818,8 +820,8 @@ const css = `
 /* --- Responsive Design --- */
 @media (max-width: 1024px) {
   .hero-title { font-size: 40px; }
-  .login-form-section { width: 55%; padding: 32px; }
-  .login-hero-section { padding: 40px; }
+  .login-form-section { width: 50%; padding: 32px; }
+  .login-hero-section { width: 50%; padding: 40px; }
 }
 
 @media (max-width: 768px) {

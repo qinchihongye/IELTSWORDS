@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Button, Card, Form, Input, List, Space, Typography, message, Modal, Tabs, Collapse, Badge, Spin } from 'antd';
+import { Button, Card, Form, Input, List, Space, Typography, message, Modal, Tabs, Collapse, Badge, Spin, Tooltip } from 'antd';
 import {
   SearchOutlined,
   SaveOutlined,
@@ -76,6 +76,17 @@ const parseDerivatives = (str) => {
 const stringifyJsonField = (arr) => {
   if (!arr || !arr.length) return '';
   return JSON.stringify(arr);
+};
+
+const formatPhonetic = (str) => {
+  if (!str) return '';
+  const trimmed = str.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('/') && trimmed.endsWith('/')) {
+    return trimmed;
+  }
+  const clean = trimmed.replace(/\//g, '');
+  return `/${clean}/`;
 };
 
 const AdminContent = () => {
@@ -195,6 +206,8 @@ const AdminContent = () => {
     setSelectedWord(word);
     form.setFieldsValue({
       ...word,
+      phonetics_uk: formatPhonetic(word.phonetics_uk),
+      phonetics_us: formatPhonetic(word.phonetics_us),
       roots_affixes: parseRootsAffixes(word.roots_affixes),
       derivatives: parseDerivatives(word.derivatives)
     });
@@ -204,6 +217,8 @@ const AdminContent = () => {
   const handleSubmitAttempt = (values) => {
     const processedValues = {
       ...values,
+      phonetics_uk: formatPhonetic(values.phonetics_uk),
+      phonetics_us: formatPhonetic(values.phonetics_us),
       roots_affixes: stringifyJsonField(values.roots_affixes),
       derivatives: stringifyJsonField(values.derivatives)
     };
@@ -481,27 +496,6 @@ const AdminContent = () => {
         <Card className="admin-content-card editor-card shadow-glass">
           {selectedWord ? (
             <Form form={form} layout="vertical" onFinish={handleSubmitAttempt}>
-              {searchMode !== 'directory' && (
-                <div className="editor-title-wrap">
-                  <div className="editor-header-flashcard">
-                    <div className="editor-header-top">
-                      <div className="editor-title-badge">
-                        <EditOutlined /> 修改内容
-                      </div>
-                    </div>
-                    <div className="editor-word-display-row">
-                      <div className="editor-word-display">
-                        {selectedWord.word}
-                      </div>
-                      <div className="editor-tags-row">
-                        <span className="editor-glass-tag">🔖 {selectedWord.chapterName}</span>
-                        <span className="editor-glass-tag">🎯 {selectedWord.groupTheme}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="editor-form-scrollbox">
                 {/* Bento Module A1: Core Explanation */}
                 <div className="bento-module-title" style={{ top: '0px' }}>
@@ -599,8 +593,55 @@ const AdminContent = () => {
                   </Form.List>
                 </div>
 
+                {/* Bento Module B: Phonetics */}
+                <div className="bento-module-title" style={{ top: '138px', background: 'rgba(250, 245, 255, 0.95)', borderColor: 'rgba(233, 213, 255, 0.8)', color: '#7c3aed' }}>
+                  <SoundOutlined /> 发音区块
+                </div>
+                <div className="bento-module-content-card" style={{ background: 'rgba(250, 245, 255, 0.4)', borderColor: 'rgba(233, 213, 255, 0.8)', borderTop: 'none' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', gap: 8, paddingRight: 24, paddingLeft: 4, fontSize: '12px', fontWeight: 'bold', color: '#5b21b6', marginBottom: 2 }}>
+                      <div style={{ flex: 1 }}>发音地区</div>
+                      <div style={{ flex: 2 }}>音标内容</div>
+                    </div>
+                    
+                    {/* UK Phonetics Row */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingLeft: 4 }}>
+                        <Tooltip title="UK(小不列颠及北爱尔兰不联合王国)">
+                          <span style={{ fontSize: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '8px', background: 'rgba(250, 245, 255, 0.8)', border: '1px solid rgba(233, 213, 255, 0.6)', boxShadow: '0 2px 6px rgba(124, 58, 237, 0.05)' }}>
+                            🇬🇧
+                          </span>
+                        </Tooltip>
+                      </div>
+                      <Form.Item
+                        name="phonetics_uk"
+                        style={{ marginBottom: 0, flex: 2 }}
+                      >
+                        <Input placeholder="英式音标 (例: /kəˈlaɪdəskəʊp/)" className="input-field-glass table-input-purple" />
+                      </Form.Item>
+                    </div>
+
+                    {/* US Phonetics Row */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingLeft: 4 }}>
+                        <Tooltip title="UK(美利坚弃众国)">
+                          <span style={{ fontSize: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '8px', background: 'rgba(250, 245, 255, 0.8)', border: '1px solid rgba(233, 213, 255, 0.6)', boxShadow: '0 2px 6px rgba(124, 58, 237, 0.05)' }}>
+                            🇺🇸
+                          </span>
+                        </Tooltip>
+                      </div>
+                      <Form.Item
+                        name="phonetics_us"
+                        style={{ marginBottom: 0, flex: 2 }}
+                      >
+                        <Input placeholder="美式音标 (例: /kəˈlaɪdəskoʊp/)" className="input-field-glass table-input-purple" />
+                      </Form.Item>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Bento Module A4: Word Note */}
-                <div className="bento-module-title" style={{ top: '138px' }}>
+                <div className="bento-module-title" style={{ top: '184px' }}>
                   <HighlightOutlined style={{ color: '#f59e0b' }} /> 单词备注
                 </div>
                 <div className="bento-module-content-card">
@@ -610,27 +651,6 @@ const AdminContent = () => {
                   >
                     <Input.TextArea rows={3} placeholder="记忆卡片备注 / 考点拓展 (例: 雅思核心高频考词)" className="input-field-glass" />
                   </Form.Item>
-                </div>
-
-                {/* Bento Module B: Phonetics */}
-                <div className="bento-module-title" style={{ top: '184px' }}>
-                  <SoundOutlined style={{ color: '#8b5cf6' }} /> 发音区块
-                </div>
-                <div className="bento-module-content-card">
-                  <div className="phonetic-grid">
-                    <Form.Item
-                      name="phonetics_uk"
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Input prefix={<span style={{ marginRight: 6 }}>🇬🇧</span>} placeholder="英式音标 [UK]" className="input-field-glass" />
-                    </Form.Item>
-                    <Form.Item
-                      name="phonetics_us"
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Input prefix={<span style={{ marginRight: 6 }}>🇺🇸</span>} placeholder="美式音标 [US]" className="input-field-glass" />
-                    </Form.Item>
-                  </div>
                 </div>
 
                 {/* Bento Module C: Context & Example */}
@@ -1061,6 +1081,12 @@ const css = `
   font-weight: 600;
   border-color: rgba(187, 247, 208, 0.6) !important;
 }
+.table-input-purple.ant-input {
+  background: rgba(250, 245, 255, 0.8) !important;
+  color: #4c1d95 !important;
+  font-weight: 600;
+  border-color: rgba(233, 213, 255, 0.6) !important;
+}
 
 .editor-form-scrollbox {
   flex: 1;
@@ -1132,11 +1158,6 @@ const css = `
   border-color: rgba(59, 130, 246, 0.3);
 }
 
-.phonetic-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
 
 .editor-footer-actions {
   display: flex;

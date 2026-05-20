@@ -20,8 +20,10 @@ import {
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLearning } from '../context/LearningContext';
+import { useQuiz } from '../context/QuizContext';
+import apiClient from '../api/client';
 import { hasMinRole, ROLE_COLORS, ROLE_LABELS } from '../utils/roles';
-import { getAvatarSrc, getAvatarFallbackText } from '../utils/avatars';
+import { getAvatarSrc, getAvatarFallbackText, getAvatarName } from '../utils/avatars';
 import AIChatWidget from './AIChatWidget';
 import UserAvatar from './UserAvatar';
 
@@ -40,30 +42,56 @@ const MainLayout = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { resetLearning, setMode } = useLearning();
+  const { quizSession, setQuizSession } = useQuiz();
   const [collapsed, setCollapsed] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
 
-  const handleMenuClick = ({ key }) => {
-    resetLearning();
-    if (key === '/home') {
-      navigate('/home');
+  const confirmQuizExit = (onConfirm) => {
+    if (location.pathname === '/quiz' && quizSession && !quizSession.completed_at) {
+      Modal.confirm({
+        title: '确认退出测试？',
+        content: '退出后将不保留当前的测试状态，本次答题进度将丢失。',
+        okText: '确认退出',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          try {
+            await apiClient.delete(`/api/quiz/session/${quizSession.id}`);
+          } catch (e) {
+            console.error('删除测试会话失败:', e);
+          }
+          setQuizSession(null);
+          onConfirm();
+        }
+      });
     } else {
-      // Map keys to modes
-      const modeMap = {
-        '/chapter-select': 'sequential',
-        '/random-group': 'random-group',
-        '/random-word': 'random-word',
-        '/review': 'review',
-        '/mistake-book': 'mistake-book',
-        '/quiz': 'quiz',
-        '/check-in': 'check-in'
-      };
-      if (modeMap[key]) {
-        setMode(modeMap[key]);
-      }
-      navigate(key);
+      onConfirm();
     }
+  };
+
+  const handleMenuClick = ({ key }) => {
+    confirmQuizExit(() => {
+      resetLearning();
+      if (key === '/home') {
+        navigate('/home');
+      } else {
+        // Map keys to modes
+        const modeMap = {
+          '/chapter-select': 'sequential',
+          '/random-group': 'random-group',
+          '/random-word': 'random-word',
+          '/review': 'review',
+          '/mistake-book': 'mistake-book',
+          '/quiz': 'quiz',
+          '/check-in': 'check-in'
+        };
+        if (modeMap[key]) {
+          setMode(modeMap[key]);
+        }
+        navigate(key);
+      }
+    });
   };
 
   const menuItems = [
@@ -203,13 +231,13 @@ const MainLayout = () => {
         key: 'profile',
         icon: <UserOutlined />,
         label: '个人资料',
-        onClick: () => navigate('/profile'),
+        onClick: () => confirmQuizExit(() => navigate('/profile')),
       },
       {
         key: 'logout',
         icon: <LogoutOutlined />,
         label: '退出登录',
-        onClick: logout,
+        onClick: () => confirmQuizExit(logout),
       },
     ],
   };
@@ -358,7 +386,7 @@ const MainLayout = () => {
                 >
                   {!getAvatarSrc(user) ? getAvatarFallbackText(user?.username || user?.email || '') : null}
                 </Avatar>
-                <span style={{ color: '#6b7280', fontSize: 14 }}>{user?.username || '用户'}</span>
+                <span style={{ color: '#6b7280', fontSize: 14 }}>{getAvatarName(user)}</span>
               </div>
             </Modal>
           </div>

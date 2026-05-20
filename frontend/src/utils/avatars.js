@@ -169,3 +169,14 @@ export const getAvatarFallbackText = (name = '') => {
   }
   return trimmed.slice(0, 1).toUpperCase();
 };
+
+export const getAvatarName = (userLike) => {
+  if (!userLike) {
+    return '默认头像';
+  }
+  if (userLike.avatar_type === 'upload') {
+    return '自定义上传头像';
+  }
+  const option = getBuiltinAvatarOption(userLike.avatar_value);
+  return option ? option.label : '默认头像';
+};

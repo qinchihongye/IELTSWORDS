@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import MarkdownIt from 'markdown-it';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import './AIMarkdownContent.css';
 
 const MARKDOWN = new MarkdownIt({
@@ -21,6 +23,62 @@ MARKDOWN.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 MARKDOWN.renderer.rules.table_open = () => '<div class="ai-markdown__table-wrap"><table>';
 MARKDOWN.renderer.rules.table_close = () => '</table></div>';
+
+// Helper to detect if a string looks like math/LaTeX
+const looksLikeMath = (str) => {
+  const trimmed = str.trim();
+  if (trimmed.startsWith('$') && trimmed.endsWith('$') && trimmed.length > 2) {
+    return true;
+  }
+  if (/\\(?:[a-zA-Z]+|[,;!])/.test(trimmed)) {
+    return true;
+  }
+  if (/\^/.test(trimmed)) {
+    return true;
+  }
+  if (/\b[a-zA-Z]_[a-zA-Z0-9]\b/.test(trimmed) || /_[0-9]+/.test(trimmed) || /_\{.*?\}/.test(trimmed)) {
+    return true;
+  }
+  return false;
+};
+
+const defaultCodeInline = MARKDOWN.renderer.rules.code_inline
+  || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+
+MARKDOWN.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  const content = token.content;
+
+  if (looksLikeMath(content)) {
+    try {
+      const cleanContent = content.replace(/^\$/, '').replace(/\$$/, '');
+      return katex.renderToString(cleanContent, { displayMode: false, throwOnError: false });
+    } catch (e) {
+      console.error('KaTeX inline rule error:', e);
+    }
+  }
+  return defaultCodeInline(tokens, idx, options, env, self);
+};
+
+const defaultFence = MARKDOWN.renderer.rules.fence
+  || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+
+MARKDOWN.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  const lang = (token.info || '').trim().toLowerCase();
+  const content = token.content;
+
+  const isMathBlock = lang === 'math' || lang === 'latex' || looksLikeMath(content) || /\\(?:frac|sqrt|pm|int|sum|alpha|beta|gamma|theta|omega|pi|partial|nabla|infty|times|div|approx|neq|le|ge|rightarrow|leftarrow|to|bar|hat|tilde)/.test(content);
+
+  if (isMathBlock) {
+    try {
+      return katex.renderToString(content.trim(), { displayMode: true, throwOnError: false });
+    } catch (e) {
+      console.error('KaTeX block rule error:', e);
+    }
+  }
+  return defaultFence(tokens, idx, options, env, self);
+};
 
 const BLOCK_LABEL_PATTERN = /^(?:例句|示例|Example|Sentence|译文|翻译|释义|Translation|Meaning|用法|提示|说明|Note|Usage)[：:]/i;
 const EXAMPLE_START_PATTERN = /^(?:例句|示例|Example|Sentence)[：:]/i;
@@ -92,7 +150,7 @@ const normalizeMarkdown = (content = '') => {
   text = text.replace(/([^\n])\s+[•●▪◦‣]\s+/g, '$1\n- ');
   text = text.replace(/^(\s*)[•●▪◦‣]\s+/gm, '$1- ');
   text = text.replace(/^(\s*\d+)\)\s+/gm, '$1. ');
-  text = text.replace(/^(\s*[-*+])(\S)/gm, '$1 $2');
+  text = text.replace(/^(\s*(?:[-+]|\*(?!\*)))(\S)/gm, '$1 $2');
   text = text.replace(/^(\s*\d+\.)(\S)/gm, '$1 $2');
   text = addTableSpacing(text);
   text = text.replace(/\n{3,}/g, '\n\n');
@@ -153,8 +211,65 @@ const AIMarkdownContent = ({ content = '', tone = 'default', compact = false }) 
   const colorTone = toneVars[tone] ? tone : 'default';
 
   const html = useMemo(() => {
-    const prepared = prepareMarkdown(content);
-    return prepared ? MARKDOWN.render(prepared) : '';
+    if (!content) return '';
+
+    const blockMath = [];
+    const inlineMath = [];
+
+    // 1. Extract block math ($$ ... $$)
+    let processed = content.replace(/\$\$([\s\S]*?)\$\$/g, (match, equation) => {
+      blockMath.push(equation.trim());
+      return `@@@BLOCK_MATH_${blockMath.length - 1}@@@`;
+    });
+
+    // 2. Extract inline math ($ ... $)
+    processed = processed.replace(/\$([^\s\$](?:[^\$]*?[^\s\$])?)\$/g, (match, equation) => {
+      const trimmed = equation.trim();
+      // Skip if it looks like a currency range, e.g. "10-" or "10 "
+      if (/^\d+[\s-]*$/.test(trimmed)) {
+        return match;
+      }
+      inlineMath.push(trimmed);
+      return `@@@INLINE_MATH_${inlineMath.length - 1}@@@`;
+    });
+
+    // 3. Prepare and render Markdown
+    const prepared = prepareMarkdown(processed);
+    let renderedHtml = prepared ? MARKDOWN.render(prepared) : '';
+
+    // 4. Restore block math with KaTeX rendering (and strip wrapping <p> if present)
+    renderedHtml = renderedHtml.replace(/<p>\s*@@@BLOCK_MATH_(\d+)@@@\s*<\/p>/g, (match, index) => {
+      const equation = blockMath[parseInt(index, 10)];
+      try {
+        return katex.renderToString(equation, { displayMode: true, throwOnError: false });
+      } catch (e) {
+        console.error('KaTeX block error:', e);
+        return `<div class="katex-error">$$ ${equation} $$</div>`;
+      }
+    });
+
+    renderedHtml = renderedHtml.replace(/@@@BLOCK_MATH_(\d+)@@@/g, (match, index) => {
+      const equation = blockMath[parseInt(index, 10)];
+      try {
+        return katex.renderToString(equation, { displayMode: true, throwOnError: false });
+      } catch (e) {
+        console.error('KaTeX block error:', e);
+        return `<div class="katex-error">$$ ${equation} $$</div>`;
+      }
+    });
+
+    // 5. Restore inline math with KaTeX rendering
+    renderedHtml = renderedHtml.replace(/@@@INLINE_MATH_(\d+)@@@/g, (match, index) => {
+      const equation = inlineMath[parseInt(index, 10)];
+      try {
+        return katex.renderToString(equation, { displayMode: false, throwOnError: false });
+      } catch (e) {
+        console.error('KaTeX inline error:', e);
+        return `<span class="katex-error">$ ${equation} $</span>`;
+      }
+    });
+
+    return renderedHtml;
   }, [content]);
 
   if (!html) {

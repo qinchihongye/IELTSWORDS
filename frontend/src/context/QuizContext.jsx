@@ -82,6 +82,17 @@ export const QuizProvider = ({ children }) => {
     }
   }, []);
 
+  const deleteQuizSession = useCallback(async (sessionId) => {
+    try {
+      const response = await apiClient.delete(`/api/quiz/session/${sessionId}`);
+      setQuizSession(null);
+      return response.data;
+    } catch (error) {
+      console.error('删除测试会话失败:', error);
+      return null;
+    }
+  }, []);
+
   const value = useMemo(() => ({
     quizSession,
     setQuizSession,
@@ -91,6 +102,7 @@ export const QuizProvider = ({ children }) => {
     completeQuiz,
     fetchQuizHistory,
     fetchActiveQuizSession,
+    deleteQuizSession,
   }), [
     quizSession,
     startQuiz,
@@ -99,6 +111,7 @@ export const QuizProvider = ({ children }) => {
     completeQuiz,
     fetchQuizHistory,
     fetchActiveQuizSession,
+    deleteQuizSession,
   ]);
 
   return <QuizContext.Provider value={value}>{children}</QuizContext.Provider>;

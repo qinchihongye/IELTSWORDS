@@ -188,12 +188,14 @@ const AdminUsers = () => {
       title: '用户',
       dataIndex: 'username',
       key: 'username',
+      width: 180,
       render: (username, record) => (
         <div className="admin-user-cell">
-          <UserAvatar user={record} size={42} />
+          <UserAvatar user={record} size={42} previewable previewTitle={`${record.username} 的头像`} />
           <div className="admin-user-cell__copy">
-            <Text strong className="user-name-text">{username}</Text>
-            <Text type="secondary" className="user-email-text">{record.email}</Text>
+            <Tooltip title={record.email} placement="topLeft">
+              <Text strong className="user-name-text" style={{ cursor: 'help' }}>{username}</Text>
+            </Tooltip>
           </div>
         </div>
       ),
@@ -231,15 +233,27 @@ const AdminUsers = () => {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 190,
-      render: (value) => value ? <Text style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{new Date(value).toLocaleString()}</Text> : '-',
+      width: 150,
+      render: (value) => {
+        if (!value) return '-';
+        const d = new Date(value);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+      },
     },
     {
       title: '最近登录',
       dataIndex: 'last_login',
       key: 'last_login',
-      width: 190,
-      render: (value) => value ? <Text style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{new Date(value).toLocaleString()}</Text> : '-',
+      width: 150,
+      render: (value) => {
+        if (!value) return '-';
+        const d = new Date(value);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+      },
     },
     {
       title: '操作',
@@ -532,12 +546,14 @@ const css = `
   display: flex;
   align-items: center;
   gap: 14px;
+  white-space: nowrap;
 }
 
 .admin-user-cell__copy {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
 }
 
 .admin-user-cell__copy .user-name-text {

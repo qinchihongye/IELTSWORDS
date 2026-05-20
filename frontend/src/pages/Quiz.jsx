@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Card, Typography, Spin, Radio, Progress, Switch, message } from 'antd';
+import { Button, Card, Typography, Spin, Radio, Progress, Switch, Modal, message } from 'antd';
 import { ArrowLeftOutlined, MessageOutlined, TrophyOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useLearning } from '../context/LearningContext';
@@ -279,6 +279,8 @@ const Quiz = () => {
     submitQuizAnswer,
     completeQuiz,
     fetchActiveQuizSession,
+    deleteQuizSession,
+    setQuizSession,
   } = useQuiz();
   const { setPageContext, clearPageContext, openWithPrompt } = useAIChat();
 
@@ -372,15 +374,98 @@ const Quiz = () => {
   }, [clearPageContext]);
 
   const returnToQuizHome = () => {
-    setQuizStarted(false);
-    setResult(null);
-    setSessionId(null);
-    setQuestions([]);
-    setCurrentQuestionIndex(0);
-    setHistoryLog({});
-    setCorrectCount(0);
-    setIsTimerRunning(false);
+    if (quizStarted && !result && sessionId) {
+      Modal.confirm({
+        title: '确认退出测试？',
+        content: '退出后将不保留当前的测试状态，本次答题进度将丢失。',
+        okText: '确认退出',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          try {
+            await deleteQuizSession(sessionId);
+          } catch (e) {
+            console.error('删除测试会话失败:', e);
+          }
+          setQuizSession(null);
+          setQuizStarted(false);
+          setResult(null);
+          setSessionId(null);
+          setQuestions([]);
+          setCurrentQuestionIndex(0);
+          setHistoryLog({});
+          setCorrectCount(0);
+          setIsTimerRunning(false);
+        }
+      });
+    } else {
+      setQuizSession(null);
+      setQuizStarted(false);
+      setResult(null);
+      setSessionId(null);
+      setQuestions([]);
+      setCurrentQuestionIndex(0);
+      setHistoryLog({});
+      setCorrectCount(0);
+      setIsTimerRunning(false);
+    }
   };
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (quizStarted && !result) {
+        e.preventDefault();
+        e.returnValue = '测试正在进行中，退出将不保留测试状态，确定要离开吗？';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [quizStarted, result]);
+
+  useEffect(() => {
+    if (quizStarted && !result && sessionId) {
+      // 写入一条历史记录以捕获浏览器的后退行为
+      window.history.pushState({ isQuizActive: true }, '', window.location.pathname);
+
+      const handlePopState = (e) => {
+        if (quizStarted && !result) {
+          // 重新写入以保持在当前测试页面
+          window.history.pushState({ isQuizActive: true }, '', window.location.pathname);
+
+          Modal.confirm({
+            title: '确认退出测试？',
+            content: '退出后将不保留当前的测试状态，本次答题进度将丢失。',
+            okText: '确认退出',
+            cancelText: '取消',
+            okButtonProps: { danger: true },
+            onOk: async () => {
+              try {
+                await deleteQuizSession(sessionId);
+              } catch (e) {
+                console.error('删除测试会话失败:', e);
+              }
+              setQuizSession(null);
+              setQuizStarted(false);
+              setResult(null);
+              setSessionId(null);
+              setQuestions([]);
+              setCurrentQuestionIndex(0);
+              setHistoryLog({});
+              setCorrectCount(0);
+              setIsTimerRunning(false);
+              navigate('/home');
+            }
+          });
+        }
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [quizStarted, result, sessionId, navigate, deleteQuizSession, setQuizSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,6 +508,7 @@ const Quiz = () => {
         );
 
         setSessionId(snapshot.session.id);
+        setQuizSession(snapshot.session);
         setQuizType(snapshot.session.quiz_type);
         setQuestionCount(snapshot.session.total_questions);
         setQuestions(nextQuestions);

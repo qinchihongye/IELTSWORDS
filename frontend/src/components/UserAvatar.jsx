@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Avatar, Modal } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { getAvatarFallbackText, getAvatarSrc } from '../utils/avatars';
+import { getAvatarFallbackText, getAvatarSrc, getAvatarName } from '../utils/avatars';
 
-const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, ...props }) => {
+const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, src: customSrc, ...props }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const src = getAvatarSrc(user);
+  const src = customSrc || getAvatarSrc(user);
   const title = previewTitle || user?.username || user?.email || '头像预览';
 
   const avatarNode = (
@@ -42,7 +42,7 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: '50%',
+          borderRadius: style?.borderRadius || '50%',
           cursor: 'zoom-in',
         }}
       >
@@ -71,10 +71,11 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
             src={src}
             shape="circle"
             style={{
-              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+              background: style?.background || undefined,
+              boxShadow: style?.background === 'transparent' ? 'none' : '0 8px 30px rgba(0,0,0,0.12)',
             }}
           />
-          <span style={{ color: '#6b7280', fontSize: 14 }}>{title}</span>
+          <span style={{ color: '#6b7280', fontSize: 14 }}>{customSrc ? title : getAvatarName(user)}</span>
         </div>
       </Modal>
     </>

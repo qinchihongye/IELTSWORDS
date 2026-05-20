@@ -488,14 +488,14 @@ const AIChatWidget = () => {
         rootClassName="ai-assistant-drawer"
         title={(
           <Space size={10} style={{ display: 'flex', alignItems: 'center' }}>
-            <img
+            <UserAvatar
               src="/ai-avatar.png"
-              alt="AI"
+              size={32}
+              previewable={true}
+              previewTitle="IELTS AI 助手"
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: '10px',
-                boxShadow: '0 4px 12px rgba(181, 144, 232, 0.2)',
+                background: 'transparent',
+                boxShadow: 'none',
                 objectFit: 'cover'
               }}
             />
@@ -645,15 +645,15 @@ const AIChatWidget = () => {
                 height: '100%',
                 color: '#64748b'
               }}>
-                <img
+                <UserAvatar
                   src="/ai-avatar.png"
-                  alt="AI Assistant Avatar"
+                  size={64}
+                  previewable={true}
+                  previewTitle="IELTS AI 助手"
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '20px',
+                    background: 'transparent',
                     marginBottom: 20,
-                    boxShadow: '0 8px 24px rgba(181, 144, 232, 0.25)',
+                    boxShadow: 'none',
                     objectFit: 'cover'
                   }}
                 />
@@ -770,15 +770,15 @@ const AIChatWidget = () => {
                       {isUser ? (
                         <UserAvatar user={user} size={20} />
                       ) : (
-                        <img
+                        <UserAvatar
                           src="/ai-avatar.png"
-                          alt="AI Avatar"
+                          size={20}
+                          previewable={true}
+                          previewTitle="IELTS AI 助手"
                           style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: '50%',
-                            border: '1px solid rgba(181, 144, 232, 0.2)',
-                            boxShadow: '0 2px 6px rgba(181, 144, 232, 0.1)',
+                            background: 'transparent',
+                            border: 'none',
+                            boxShadow: 'none',
                             objectFit: 'cover'
                           }}
                         />

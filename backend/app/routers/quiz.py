@@ -104,6 +104,17 @@ async def start_quiz(
             detail="题目数量必须在 1-50 之间"
         )
 
+    # 启动新测试前，清除该用户以前所有未完成的残留测试会话，确保状态唯一且干净
+    old_sessions = db.query(models.QuizSession).filter(
+        models.QuizSession.user_id == current_user.id,
+        models.QuizSession.completed_at.is_(None)
+    ).all()
+    if old_sessions:
+        old_ids = [s.id for s in old_sessions]
+        db.query(models.QuizAnswer).filter(models.QuizAnswer.session_id.in_(old_ids)).delete(synchronize_session=False)
+        db.query(models.QuizSession).filter(models.QuizSession.id.in_(old_ids)).delete(synchronize_session=False)
+        db.commit()
+
     questions = crud.generate_quiz_questions(
         db, current_user.id, quiz_request.quiz_type, quiz_request.count
     )
@@ -248,3 +259,31 @@ async def get_quiz_history(
     """
     history = crud.get_quiz_history(db, current_user.id, limit)
     return history
+
+@router.delete("/session/{session_id}")
+async def delete_quiz_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    删除未完成的测试会话以退出，不保留测试状态
+    """
+    # 查找属于该用户的所有未完成会话，确保彻底清除所有残留以防再次恢复
+    uncompleted_sessions = db.query(models.QuizSession).filter(
+        models.QuizSession.user_id == current_user.id,
+        models.QuizSession.completed_at.is_(None)
+    ).all()
+
+    if not uncompleted_sessions:
+        return {"message": "没有未完成的测试会话需要删除"}
+
+    session_ids = [s.id for s in uncompleted_sessions]
+
+    # 先删除关联的答案
+    db.query(models.QuizAnswer).filter(models.QuizAnswer.session_id.in_(session_ids)).delete(synchronize_session=False)
+    # 再删除会话
+    db.query(models.QuizSession).filter(models.QuizSession.id.in_(session_ids)).delete(synchronize_session=False)
+    db.commit()
+
+    return {"message": f"成功删除 {len(session_ids)} 个未完成的测试会话"}
