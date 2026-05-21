@@ -1,0 +1,17 @@
+# 代码审查生成的文件 (可选择性提交)
+
+# 审查文档 (建议提交到仓库)
+# CODE_REVIEW.md
+# FINAL_REPORT.md
+# QUICK_FIXES.md
+# CODE_REVIEW_INDEX.md
+# REVIEW_SUMMARY.md
+# README_REVIEW.md
+# .review-checklist.md
+
+# 备份文件 (不要提交)
+*.backup
+
+# 审查脚本 (建议提交)
+# apply_fixes.py
+# review-quickref.sh

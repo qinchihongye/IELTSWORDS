@@ -172,6 +172,11 @@ OPENAI_MODEL = (
     or AI_CONFIG.get("model")
     or "gpt-4o-mini"
 )
+OPENAI_DISPLAY_MODEL_NAME = (
+    _env_text("OPENAI_DISPLAY_MODEL_NAME")
+    or AI_CONFIG.get("display_model_name")
+    or OPENAI_MODEL
+)
 OPENAI_AVAILABLE_MODELS = _dedupe_text_items(
     [OPENAI_MODEL],
     _env_list("OPENAI_MODELS", []),

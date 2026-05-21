@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS单词背诵 - 登录</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --terracotta: #D98568;
+            --sage: #ABC0A6;
+            --ochre: #D9B373;
+            --cream: #FAF5E9;
+            --warm-gray: #736B66;
+            --dark-gray: #3A3632;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--cream);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Decorative background elements */
+        .bg-decoration {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.15;
+            animation: float 20s ease-in-out infinite;
+        }
+
+        .bg-circle-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--terracotta);
+            top: -200px;
+            left: -100px;
+            animation-delay: 0s;
+        }
+
+        .bg-circle-2 {
+            width: 300px;
+            height: 300px;
+            background: var(--sage);
+            bottom: -150px;
+            right: -80px;
+            animation-delay: 5s;
+        }
+
+        .bg-circle-3 {
+            width: 200px;
+            height: 200px;
+            background: var(--ochre);
+            top: 50%;
+            right: 10%;
+            animation-delay: 10s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -30px) scale(1.05); }
+            66% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        .login-container {
+            position: relative;
+            z-index: 1;
+            background: white;
+            border-radius: 24px;
+            padding: 60px 50px;
+            width: 440px;
+            box-shadow: 0 20px 60px rgba(115, 107, 102, 0.12);
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-section {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--terracotta), var(--ochre));
+            border-radius: 16px;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .logo-icon::before {
+            content: '';
+            width: 24px;
+            height: 24px;
+            background: white;
+            border-radius: 6px;
+            position: absolute;
+        }
+
+        .logo-icon::after {
+            content: '';
+            width: 16px;
+            height: 2px;
+            background: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        h1 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--dark-gray);
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--warm-gray);
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+            animation: fadeIn 0.6s ease-out backwards;
+        }
+
+        .form-group:nth-child(1) { animation-delay: 0.1s; }
+        .form-group:nth-child(2) { animation-delay: 0.2s; }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--dark-gray);
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #E8E3DB;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: 'DM Sans', sans-serif;
+            color: var(--dark-gray);
+            background: var(--cream);
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--terracotta);
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(217, 133, 104, 0.15);
+        }
+
+        input::placeholder {
+            color: #B8B3AD;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--terracotta), var(--ochre));
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 32px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            animation: fadeIn 0.6s ease-out 0.3s backwards;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(217, 133, 104, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .divider {
+            text-align: center;
+            margin: 32px 0;
+            position: relative;
+            animation: fadeIn 0.6s ease-out 0.4s backwards;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: #E8E3DB;
+        }
+
+        .divider::before { left: 0; }
+        .divider::after { right: 0; }
+
+        .divider span {
+            background: white;
+            padding: 0 16px;
+            font-size: 13px;
+            color: var(--warm-gray);
+        }
+
+        .register-link {
+            text-align: center;
+            font-size: 14px;
+            color: var(--warm-gray);
+            animation: fadeIn 0.6s ease-out 0.5s backwards;
+        }
+
+        .register-link a {
+            color: var(--terracotta);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .register-link a:hover {
+            color: var(--ochre);
+            text-decoration: underline;
+        }
+
+        .remember-forgot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            font-size: 13px;
+            animation: fadeIn 0.6s ease-out 0.25s backwards;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--warm-gray);
+            cursor: pointer;
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .forgot-password {
+            color: var(--terracotta);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .forgot-password:hover {
+            color: var(--ochre);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-decoration bg-circle-1"></div>
+    <div class="bg-decoration bg-circle-2"></div>
+    <div class="bg-decoration bg-circle-3"></div>
+
+    <div class="login-container">
+        <div class="logo-section">
+            <div class="logo-icon"></div>
+            <h1>欢迎回来</h1>
+            <p class="subtitle">继续你的IELTS学习之旅</p>
+        </div>
+
+        <form>
+            <div class="form-group">
+                <label for="username">用户名或邮箱</label>
+                <input type="text" id="username" placeholder="输入你的用户名或邮箱" required>
+            </div>
+
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" placeholder="输入你的密码" required>
+            </div>
+
+            <div class="remember-forgot">
+                <label class="remember-me">
+                    <input type="checkbox">
+                    <span>记住我</span>
+                </label>
+                <a href="#" class="forgot-password">忘记密码？</a>
+            </div>
+
+            <button type="submit" class="btn-primary">登录</button>
+        </form>
+
+        <div class="divider">
+            <span>或</span>
+        </div>
+
+        <p class="register-link">
+            还没有账号？<a href="#">立即注册</a>
+        </p>
+    </div>
+</body>
+</html>

@@ -23,6 +23,7 @@ class User(Base):
     ai_base_url = Column(String, nullable=True)
     ai_api_key_encrypted = Column(Text, nullable=True)
     ai_model = Column(String, nullable=True)
+    ai_model_display_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     last_login = Column(DateTime)

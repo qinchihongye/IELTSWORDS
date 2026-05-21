@@ -3,7 +3,7 @@ Pydantic schemas定义
 用于请求和响应的数据验证
 """
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Any, Optional, List, Literal
 from datetime import datetime
 from .avatar_storage import DEFAULT_BUILTIN_AVATAR_KEY
@@ -448,10 +448,16 @@ class AIChatMessage(BaseModel):
         return value
 
 
+class AICustomConfig(BaseModel):
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+
 class AIChatRequest(BaseModel):
     messages: List[AIChatMessage]
     context: Optional[dict[str, Any]] = None
     model: Optional[str] = None
+    custom_config: Optional[AICustomConfig] = None
 
     @field_validator('messages')
     @classmethod
@@ -485,8 +491,11 @@ class AIChatResponse(BaseModel):
 
 
 class AISettingsUpdate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     base_url: Optional[str] = None
     model: Optional[str] = None
+    model_display_name: Optional[str] = None
     api_key: Optional[str] = None
 
     @field_validator('base_url')
@@ -516,6 +525,21 @@ class AISettingsUpdate(BaseModel):
 
         if len(value) > 120:
             raise ValueError('模型名称过长')
+
+        return value
+
+    @field_validator('model_display_name')
+    @classmethod
+    def validate_model_display_name(cls, v):
+        if v is None:
+            return None
+
+        value = v.strip()
+        if not value:
+            return None
+
+        if len(value) > 120:
+            raise ValueError('显示名称过长')
 
         return value
 
@@ -536,8 +560,11 @@ class AISettingsUpdate(BaseModel):
 
 
 class AISettingsTestRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     base_url: Optional[str] = None
     model: Optional[str] = None
+    model_display_name: Optional[str] = None
     api_key: Optional[str] = None
 
     @field_validator('base_url')
@@ -567,6 +594,21 @@ class AISettingsTestRequest(BaseModel):
 
         if len(value) > 120:
             raise ValueError('模型名称过长')
+
+        return value
+
+    @field_validator('model_display_name')
+    @classmethod
+    def validate_model_display_name(cls, v):
+        if v is None:
+            return None
+
+        value = v.strip()
+        if not value:
+            return None
+
+        if len(value) > 120:
+            raise ValueError('显示名称过长')
 
         return value
 
@@ -594,13 +636,9 @@ class AISettingsTestResponse(BaseModel):
 
 
 class AISettingsResponse(BaseModel):
-    custom_base_url: Optional[str] = None
-    custom_model: Optional[str] = None
-    has_api_key: bool
-    masked_api_key: Optional[str] = None
-    uses_custom_config: bool
     system_configured: bool
     can_use_ai: bool
     active_source: Literal['system', 'custom']
     active_model: str
+    active_model_display_name: str
     available_models: List[str]

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS单词背诵 - 首页</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --terracotta: #D98568;
+            --sage: #ABC0A6;
+            --ochre: #D9B373;
+            --cream: #FAF5E9;
+            --warm-gray: #736B66;
+            --dark-gray: #3A3632;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--cream);
+            min-height: 100vh;
+            color: var(--dark-gray);
+        }
+
+        .header {
+            background: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 12px rgba(115, 107, 102, 0.08);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            animation: slideDown 0.5s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--terracotta), var(--ochre));
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .logo-icon::before {
+            content: '';
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 4px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .logo-text {
+            font-family: 'Crimson Pro', serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--dark-gray);
+            letter-spacing: -0.5px;
+        }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-stats {
+            display: flex;
+            gap: 24px;
+            font-size: 13px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-number {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--terracotta);
+        }
+
+        .stat-label {
+            color: var(--warm-gray);
+            margin-top: 2px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--sage), var(--ochre));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.1);
+        }
+
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 60px 40px;
+        }
+
+        .welcome-section {
+            margin-bottom: 60px;
+            animation: fadeInUp 0.6s ease-out 0.2s backwards;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-section h1 {
+            font-family: 'Crimson Pro', serif;
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--dark-gray);
+            margin-bottom: 12px;
+            letter-spacing: -1px;
+        }
+
+        .welcome-section p {
+            font-size: 18px;
+            color: var(--warm-gray);
+            line-height: 1.6;
+        }
+
+        .modes-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            margin-bottom: 60px;
+        }
+
+        .mode-card {
+            background: white;
+            border-radius: 24px;
+            padding: 48px 36px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+
+        .mode-card:nth-child(1) {
+            animation-delay: 0.3s;
+            border: 3px solid var(--terracotta);
+        }
+
+        .mode-card:nth-child(2) {
+            animation-delay: 0.4s;
+            border: 3px solid var(--sage);
+        }
+
+        .mode-card:nth-child(3) {
+            animation-delay: 0.5s;
+            border: 3px solid var(--ochre);
+        }
+
+        .mode-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .mode-card:nth-child(1)::before {
+            background: linear-gradient(135deg, var(--terracotta), transparent);
+        }
+
+        .mode-card:nth-child(2)::before {
+            background: linear-gradient(135deg, var(--sage), transparent);
+        }
+
+        .mode-card:nth-child(3)::before {
+            background: linear-gradient(135deg, var(--ochre), transparent);
+        }
+
+        .mode-card:hover::before {
+            opacity: 0.08;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(115, 107, 102, 0.15);
+        }
+
+        .mode-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: transform 0.4s ease;
+        }
+
+        .mode-card:hover .mode-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .mode-card:nth-child(1) .mode-icon {
+            background: var(--terracotta);
+        }
+
+        .mode-card:nth-child(2) .mode-icon {
+            background: var(--sage);
+        }
+
+        .mode-card:nth-child(3) .mode-icon {
+            background: var(--ochre);
+        }
+
+        .icon-sequential {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .icon-sequential span {
+            width: 40px;
+            height: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .icon-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+
+        .icon-group span {
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .icon-random {
+            position: relative;
+            width: 50px;
+            height: 50px;
+        }
+
+        .icon-random span {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .icon-random span:nth-child(1) { top: 5px; left: 15px; }
+        .icon-random span:nth-child(2) { top: 20px; left: 35px; }
+        .icon-random span:nth-child(3) { top: 35px; left: 10px; }
+        .icon-random span:nth-child(4) { top: 15px; left: 5px; }
+        .icon-random span:nth-child(5) { top: 30px; left: 30px; }
+
+        .mode-title {
+            font-family: 'Crimson Pro', serif;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--dark-gray);
+            position: relative;
+            z-index: 1;
+        }
+
+        .mode-subtitle {
+            font-size: 14px;
+            color: var(--warm-gray);
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .mode-description {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--warm-gray);
+            position: relative;
+            z-index: 1;
+        }
+
+        .mode-meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #E8E3DB;
+            position: relative;
+            z-index: 1;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--warm-gray);
+        }
+
+        .meta-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mode-card:nth-child(1) .meta-icon {
+            background: rgba(217, 133, 104, 0.15);
+            color: var(--terracotta);
+        }
+
+        .mode-card:nth-child(2) .meta-icon {
+            background: rgba(171, 192, 166, 0.15);
+            color: var(--sage);
+        }
+
+        .mode-card:nth-child(3) .meta-icon {
+            background: rgba(217, 179, 115, 0.15);
+            color: var(--ochre);
+        }
+
+        @media (max-width: 968px) {
+            .modes-grid {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+
+            .welcome-section h1 {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="#" class="logo">
+                <div class="logo-icon"></div>
+                <span class="logo-text">IELTS 单词背诵</span>
+            </a>
+            <div class="user-section">
+                <div class="user-stats">
+                    <div class="stat-item">
+                        <span class="stat-number">125</span>
+                        <span class="stat-label">已掌握</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">3550</span>
+                        <span class="stat-label">待学习</span>
+                    </div>
+                </div>
+                <div class="user-avatar">孟</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <section class="welcome-section">
+            <h1>选择学习模式</h1>
+            <p>三种科学的学习方式，帮助你高效掌握IELTS词汇</p>
+        </section>
+
+        <div class="modes-grid">
+            <div class="mode-card">
+                <div class="mode-icon">
+                    <div class="icon-sequential">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+                <h2 class="mode-title">按顺序学习</h2>
+                <p class="mode-subtitle">Sequential Learning</p>
+                <p class="mode-description">
+                    系统化学习，按章节和分组循序渐进。适合建立完整的词汇体系，稳扎稳打掌握每个单词。
+                </p>
+                <div class="mode-meta">
+                    <div class="meta-item">
+                        <span class="meta-icon">📚</span>
+                        <span>22个章节</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">📖</span>
+                        <span>26个分组</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mode-card">
+                <div class="mode-icon">
+                    <div class="icon-group">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+                <h2 class="mode-title">随机分组</h2>
+                <p class="mode-subtitle">Random Group</p>
+                <p class="mode-description">
+                    随机推荐5个主题分组，打破常规学习顺序。适合复习巩固，保持学习新鲜感。
+                </p>
+                <div class="mode-meta">
+                    <div class="meta-item">
+                        <span class="meta-icon">🎲</span>
+                        <span>随机推荐</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">🔄</span>
+                        <span>灵活学习</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mode-card">
+                <div class="mode-icon">
+                    <div class="icon-random">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+                <h2 class="mode-title">随机单词</h2>
+                <p class="mode-subtitle">Random Word</p>
+                <p class="mode-description">
+                    每次随机展示一个单词，优先显示未学过的词汇。适合碎片时间学习，快速积累词汇量。
+                </p>
+                <div class="mode-meta">
+                    <div class="meta-item">
+                        <span class="meta-icon">⚡</span>
+                        <span>快速学习</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-icon">🎯</span>
+                        <span>智能推荐</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Add click animation
+        document.querySelectorAll('.mode-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 200);
+            });
+        });
+    </script>
+</body>
+</html>

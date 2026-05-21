@@ -28,6 +28,7 @@ const DEFAULT_CONTEXT = {
 const DEFAULT_AI_SETTINGS = {
   customBaseUrl: '',
   customModel: '',
+  customModelDisplayName: '',
   hasApiKey: false,
   maskedApiKey: '',
   usesCustomConfig: false,
@@ -35,6 +36,7 @@ const DEFAULT_AI_SETTINGS = {
   canUseAI: false,
   activeSource: 'system',
   activeModel: '',
+  activeModelDisplayName: '',
   availableModels: [],
   selectedModel: '',
 };
@@ -49,6 +51,46 @@ const createMessage = (role, content, extra = {}) => ({
   ...extra,
 });
 
+const LOCAL_SETTINGS_KEY = 'ieltswords_custom_ai_settings';
+
+const getChatHistoryKey = (userId) => `ieltswords_ai_chat_history_${userId || 'guest'}`;
+
+const getLocalAISettings = () => {
+  try {
+    const data = localStorage.getItem(LOCAL_SETTINGS_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
+};
+
+const loadMessagesFromStorage = (userId, defaultContext) => {
+  if (!userId) return [buildGreeting(defaultContext)];
+  try {
+    const key = getChatHistoryKey(userId);
+    const data = localStorage.getItem(key);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load chat history:', e);
+  }
+  return [buildGreeting(defaultContext)];
+};
+
+const saveMessagesToStorage = (userId, messages) => {
+  if (!userId || !messages || messages.length === 0) return;
+  try {
+    const key = getChatHistoryKey(userId);
+    localStorage.setItem(key, JSON.stringify(messages));
+  } catch (e) {
+    console.error('Failed to save chat history:', e);
+  }
+};
+
 const normalizeContext = (context) => ({
   ...DEFAULT_CONTEXT,
   ...(context || {}),
@@ -62,25 +104,32 @@ const normalizeModelList = (models) => {
 };
 
 const normalizeAISettings = (data, previousSelectedModel = '') => {
+  const localSettings = getLocalAISettings() || {};
   const availableModels = normalizeModelList(data?.available_models);
-  const activeModel = data?.active_model || data?.custom_model || availableModels[0] || '';
+  
+  const customModel = localSettings.model || '';
+  const hasApiKey = Boolean(localSettings.apiKey);
+  const activeModel = customModel || availableModels[0] || '';
   const defaultModel = availableModels[0] || activeModel;
+  
   const selectedModel = (
-    previousSelectedModel && availableModels.includes(previousSelectedModel)
+    previousSelectedModel && (availableModels.includes(previousSelectedModel) || previousSelectedModel === customModel)
       ? previousSelectedModel
       : defaultModel
   );
 
   return {
-    customBaseUrl: data?.custom_base_url || '',
-    customModel: data?.custom_model || '',
-    hasApiKey: Boolean(data?.has_api_key),
-    maskedApiKey: data?.masked_api_key || '',
-    usesCustomConfig: Boolean(data?.uses_custom_config),
+    customBaseUrl: localSettings.baseUrl || '',
+    customModel,
+    customModelDisplayName: localSettings.modelDisplayName || '',
+    hasApiKey,
+    maskedApiKey: localSettings.apiKey ? '*'.repeat(8) : '',
+    usesCustomConfig: hasApiKey,
     systemConfigured: Boolean(data?.system_configured),
-    canUseAI: Boolean(data?.can_use_ai),
-    activeSource: data?.active_source || 'system',
+    canUseAI: hasApiKey || Boolean(data?.system_configured),
+    activeSource: hasApiKey ? 'custom' : 'system',
     activeModel,
+    activeModelDisplayName: localSettings.modelDisplayName || activeModel,
     availableModels,
     selectedModel,
   };
@@ -191,10 +240,10 @@ const buildGreeting = (context) => {
 };
 
 export const AIChatProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [chatContext, setChatContextState] = useState(DEFAULT_CONTEXT);
-  const [messages, setMessages] = useState(() => [buildGreeting(DEFAULT_CONTEXT)]);
+  const [messages, setMessages] = useState(() => loadMessagesFromStorage(user?.id || user?.username, DEFAULT_CONTEXT));
   const [isSending, setIsSending] = useState(false);
   const [aiSettings, setAISettings] = useState(DEFAULT_AI_SETTINGS);
   const [isSettingsLoading, setIsSettingsLoading] = useState(false);
@@ -205,24 +254,29 @@ export const AIChatProvider = ({ children }) => {
 
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
+    if (isAuthenticated && (user?.id || user?.username)) {
+      saveMessagesToStorage(user?.id || user?.username, messages);
+    }
+  }, [messages, isAuthenticated, user]);
 
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
   }, [aiSettings]);
 
   useEffect(() => {
-    setMessages((prev) => {
-      const onlyGreeting = prev.length === 1 && prev[0]?.kind === 'greeting';
-      if (!onlyGreeting) {
+    if (isAuthenticated && (user?.id || user?.username)) {
+      setMessages((prev) => {
+        const loaded = loadMessagesFromStorage(user?.id || user?.username, chatContext);
+        // If the loaded messages are more robust than just one greeting, use them.
+        if (loaded.length > 1 || prev.length <= 1) {
+          return loaded;
+        }
         return prev;
-      }
-
-      const nextMessages = [buildGreeting(chatContext)];
-      messagesRef.current = nextMessages;
-      return nextMessages;
-    });
-  }, [chatContext]);
+      });
+    } else {
+      setMessages([buildGreeting(chatContext)]);
+    }
+  }, [isAuthenticated, user?.id, user?.username]);
 
   const fetchAISettings = useCallback(async (force = false) => {
     if (!isAuthenticated) {
@@ -282,7 +336,11 @@ export const AIChatProvider = ({ children }) => {
     const nextMessages = [buildGreeting(finalContext)];
     messagesRef.current = nextMessages;
     setMessages(nextMessages);
-  }, [chatContext]);
+    
+    if (isAuthenticated && (user?.id || user?.username)) {
+      saveMessagesToStorage(user?.id || user?.username, nextMessages);
+    }
+  }, [chatContext, isAuthenticated, user]);
 
   const openDrawer = useCallback(() => {
     setIsOpen(true);
@@ -297,34 +355,33 @@ export const AIChatProvider = ({ children }) => {
 
     setIsSettingsSaving(true);
     try {
-      const payload = {};
-      const currentSettings = aiSettingsRef.current;
-      const nextBaseUrl = settings?.baseUrl?.trim() || '';
-      const nextModel = settings?.model?.trim() || '';
-      const nextApiKey = settings?.apiKey?.trim() || '';
-
-      if (nextBaseUrl && nextBaseUrl !== (currentSettings.customBaseUrl || '')) {
-        payload.base_url = nextBaseUrl;
-      }
-      if (nextModel && nextModel !== (currentSettings.customModel || '')) {
-        payload.model = nextModel;
-      }
-      if (nextApiKey) {
-        payload.api_key = nextApiKey;
-      }
-
-      const response = await apiClient.patch('/api/ai/settings', payload);
-      const nextSettings = normalizeAISettings(response.data, aiSettingsRef.current.selectedModel);
-      settingsLoadedRef.current = true;
-      setAISettings(nextSettings);
-      return nextSettings;
+      const payload = {
+        baseUrl: settings?.baseUrl?.trim() || '',
+        model: settings?.model?.trim() || '',
+        modelDisplayName: settings?.modelDisplayName?.trim() || '',
+        apiKey: settings?.apiKey?.trim() || '',
+      };
+      
+      const currentLocal = getLocalAISettings() || {};
+      const newLocal = {
+        ...currentLocal,
+        baseUrl: payload.baseUrl || currentLocal.baseUrl,
+        model: payload.model || currentLocal.model,
+        modelDisplayName: payload.modelDisplayName || currentLocal.modelDisplayName,
+        apiKey: payload.apiKey || currentLocal.apiKey,
+      };
+      
+      localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(newLocal));
+      
+      // We don't need to patch backend anymore, but we can refetch the available models to rebuild the settings
+      return await fetchAISettings(true);
     } catch (error) {
       console.error('保存 AI 设置失败:', error);
       return null;
     } finally {
       setIsSettingsSaving(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchAISettings]);
 
   const resetAISettings = useCallback(async () => {
     if (!isAuthenticated) {
@@ -333,18 +390,15 @@ export const AIChatProvider = ({ children }) => {
 
     setIsSettingsSaving(true);
     try {
-      const response = await apiClient.delete('/api/ai/settings');
-      const nextSettings = normalizeAISettings(response.data, aiSettingsRef.current.selectedModel);
-      settingsLoadedRef.current = true;
-      setAISettings(nextSettings);
-      return nextSettings;
+      localStorage.removeItem(LOCAL_SETTINGS_KEY);
+      return await fetchAISettings(true);
     } catch (error) {
       console.error('恢复 AI 默认配置失败:', error);
       return null;
     } finally {
       setIsSettingsSaving(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchAISettings]);
 
   const selectModel = useCallback((model) => {
     const normalizedModel = typeof model === 'string' ? model.trim() : '';
@@ -371,6 +425,7 @@ export const AIChatProvider = ({ children }) => {
       const payload = {};
       const nextBaseUrl = settings.baseUrl?.trim() || '';
       const nextModel = settings.model?.trim() || '';
+      const nextModelDisplayName = settings.modelDisplayName?.trim() || '';
       const nextApiKey = settings.apiKey?.trim() || '';
 
       if (nextBaseUrl) {
@@ -378,6 +433,9 @@ export const AIChatProvider = ({ children }) => {
       }
       if (nextModel) {
         payload.model = nextModel;
+      }
+      if (nextModelDisplayName) {
+        payload.model_display_name = nextModelDisplayName;
       }
       if (nextApiKey) {
         payload.api_key = nextApiKey;
@@ -425,31 +483,71 @@ export const AIChatProvider = ({ children }) => {
     setMessages(nextDisplayMessages);
     setIsSending(true);
 
-    const patchAssistantMessage = (updater) => {
+    // --- Batched delta updates via requestAnimationFrame ---
+    // Instead of calling setMessages on every single token (which causes
+    // a full React re-render each time), we accumulate pending patches
+    // and flush them once per animation frame (~16ms / 60fps).
+    const pendingPatchesRef = { current: [] };
+    const rafIdRef = { current: null };
+
+    const flushPatches = () => {
+      rafIdRef.current = null;
+      const patches = pendingPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingPatchesRef.current = [];
+
       setMessages((prev) => {
         const next = prev.map((message) => {
           if (message.id !== assistantMessage.id) {
             return message;
           }
 
-          const patch = typeof updater === 'function' ? updater(message) : updater;
-          return {
-            ...message,
-            ...patch,
-          };
+          let merged = message;
+          for (const updater of patches) {
+            const patch = typeof updater === 'function' ? updater(merged) : updater;
+            merged = { ...merged, ...patch };
+          }
+          return merged;
         });
         messagesRef.current = next;
         return next;
       });
     };
 
+    const patchAssistantMessage = (updater) => {
+      pendingPatchesRef.current.push(updater);
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(flushPatches);
+      }
+    };
+
+    // For non-streaming final updates (done/error), flush immediately.
+    const patchAssistantMessageSync = (updater) => {
+      // Cancel any pending RAF and flush everything together.
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      pendingPatchesRef.current.push(updater);
+      flushPatches();
+    };
+
     try {
+      const currentSettings = aiSettingsRef.current;
+      const selectedModel = currentSettings.selectedModel;
+      const useCustomConfig = currentSettings.customModel && selectedModel === currentSettings.customModel;
+      
       const payload = {
         messages: nextDisplayMessages
           .filter((message) => message.sendable !== false)
           .map(({ role, content: messageContent }) => ({ role, content: messageContent })),
         context: activeContext,
-        model: aiSettingsRef.current.selectedModel || undefined,
+        model: selectedModel || undefined,
+        custom_config: useCustomConfig ? {
+          base_url: currentSettings.customBaseUrl || undefined,
+          api_key: getLocalAISettings()?.apiKey || undefined,
+          model: currentSettings.customModel || undefined,
+        } : undefined,
       };
 
       const response = await fetch(buildApiUrl('/api/ai/chat/stream'), {
@@ -499,7 +597,7 @@ export const AIChatProvider = ({ children }) => {
 
         if (event.type === 'done') {
           didFinish = true;
-          patchAssistantMessage({
+          patchAssistantMessageSync({
             content: event.answer || '',
             reasoning: event.reasoning || '',
             reasoningComplete: true,
@@ -519,7 +617,7 @@ export const AIChatProvider = ({ children }) => {
 
         if (event.type === 'error') {
           didFinish = true;
-          patchAssistantMessage((message) => {
+          patchAssistantMessageSync((message) => {
             const hasOutput = Boolean(message.content || message.reasoning);
             return {
               content: hasOutput ? message.content : (event.message || 'AI 助手暂时没能回复成功，请稍后再试。'),
@@ -534,7 +632,7 @@ export const AIChatProvider = ({ children }) => {
       });
 
       if (!didFinish) {
-        patchAssistantMessage((message) => ({
+        patchAssistantMessageSync((message) => ({
           streaming: false,
           reasoningComplete: Boolean(message.reasoning),
         }));
@@ -544,7 +642,7 @@ export const AIChatProvider = ({ children }) => {
       return finalAssistantMessage;
     } catch (error) {
       const fallbackText = error?.message || error?.response?.data?.detail || 'AI 助手暂时没能回复成功，请稍后再试。';
-      patchAssistantMessage((message) => {
+      patchAssistantMessageSync((message) => {
         const hasOutput = Boolean(message.content || message.reasoning);
         return {
           content: hasOutput ? message.content : fallbackText,
@@ -557,6 +655,10 @@ export const AIChatProvider = ({ children }) => {
       });
       return null;
     } finally {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       setIsSending(false);
     }
   }, [chatContext, isSending]);

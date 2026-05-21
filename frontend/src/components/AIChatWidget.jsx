@@ -48,7 +48,13 @@ const buildModelLabel = (model) => (
   </span>
 );
 
-const groupModels = (models) => {
+const extractModelDisplayName = (model) => {
+  if (!model) return '';
+  const parts = String(model).split('/');
+  return parts[parts.length - 1];
+};
+
+const groupModels = (models, activeModel, activeModelDisplayName) => {
   const groups = new Map();
 
   models.forEach((model) => {
@@ -56,8 +62,14 @@ const groupModels = (models) => {
     if (!groups.has(provider)) {
       groups.set(provider, []);
     }
+    const labelText = (model === activeModel && activeModelDisplayName)
+      ? activeModelDisplayName
+      : extractModelDisplayName(model);
+      
+    const label = buildModelLabel(labelText);
+      
     groups.get(provider).push({
-      label: buildModelLabel(model),
+      label,
       value: model,
     });
   });
@@ -110,6 +122,7 @@ const AIChatWidget = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
+  const [modelDisplayNameDraft, setModelDisplayNameDraft] = useState('');
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -207,11 +220,26 @@ const AIChatWidget = () => {
     () => chatContext?.shortcuts || [],
     [chatContext]
   );
-  const modelCount = (aiSettings.availableModels || []).length;
-  const modelOptions = useMemo(
-    () => groupModels(aiSettings.availableModels || []),
-    [aiSettings.availableModels]
-  );
+  const modelCount = (aiSettings.availableModels || []).length + (aiSettings.customModel ? 1 : 0);
+  const modelOptions = useMemo(() => {
+    const systemModels = (aiSettings.availableModels || []).filter(m => m !== aiSettings.customModel);
+    const options = groupModels(
+      systemModels,
+      aiSettings.activeModel,
+      aiSettings.activeModelDisplayName
+    );
+    
+    if (aiSettings.customModel) {
+      options.unshift({
+        label: '我的自定义模型',
+        options: [{
+          label: buildModelLabel(aiSettings.customModelDisplayName || aiSettings.customModel),
+          value: aiSettings.customModel,
+        }],
+      });
+    }
+    return options;
+  }, [aiSettings.availableModels, aiSettings.activeModel, aiSettings.activeModelDisplayName, aiSettings.customModel, aiSettings.customModelDisplayName]);
   const selectedModel = aiSettings.selectedModel || aiSettings.activeModel || '';
   const shouldShowModelBox = Boolean(selectedModel) || modelOptions.length > 0;
 
@@ -357,6 +385,7 @@ const AIChatWidget = () => {
   const openSettingsModal = () => {
     setBaseUrlDraft(aiSettings.customBaseUrl || '');
     setModelDraft(aiSettings.customModel || '');
+    setModelDisplayNameDraft(aiSettings.customModelDisplayName || '');
     setApiKeyDraft('');
     setTestResult(null);
     setIsSettingsModalOpen(true);
@@ -372,6 +401,7 @@ const AIChatWidget = () => {
     const nextSettings = await saveAISettings({
       baseUrl: baseUrlDraft,
       model: modelDraft,
+      modelDisplayName: modelDisplayNameDraft,
       apiKey: apiKeyDraft,
     });
 
@@ -387,6 +417,7 @@ const AIChatWidget = () => {
       message.success('已恢复系统默认 AI 配置');
       setBaseUrlDraft('');
       setModelDraft('');
+      setModelDisplayNameDraft('');
       setApiKeyDraft('');
       setTestResult(null);
     }
@@ -400,6 +431,7 @@ const AIChatWidget = () => {
       const result = await testAISettings({
         baseUrl: baseUrlDraft,
         model: modelDraft,
+        modelDisplayName: modelDisplayNameDraft,
         apiKey: apiKeyDraft,
       });
 
@@ -1066,8 +1098,8 @@ const AIChatWidget = () => {
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Text style={{ color: '#64748b', lineHeight: 1.7 }}>
             {aiSettings.systemConfigured
-              ? '系统默认 AI 已经可以直接使用。这里也可以额外填写你自己的 OpenAI-compatible 配置；保存后，聊天会优先走你自己的 Base URL、API Key 和模型。'
-              : '当前系统默认 AI 还没有配置完成。你可以先在项目根目录 .env 里配置 OPENAI_API_KEY，也可以在这里填写你自己的 OpenAI-compatible 配置。'}
+              ? '系统默认 AI 已经可以直接使用。你也可以额外配置自己的模型；你的自定义配置和聊天记录将仅保存在当前浏览器本地，保护隐私。'
+              : '当前系统默认 AI 未配置。你可以填写自己的配置，自定义配置和聊天记录将仅保存在当前浏览器本地。'}
           </Text>
 
           <div>
@@ -1091,6 +1123,18 @@ const AIChatWidget = () => {
               value={modelDraft}
               onChange={(event) => setModelDraft(event.target.value)}
               placeholder="例如 gpt-4o-mini"
+              maxLength={120}
+            />
+          </div>
+
+          <div>
+            <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+              显示名称 <span style={{ fontWeight: 400, color: '#94a3b8' }}>(选填)</span>
+            </Text>
+            <Input
+              value={modelDisplayNameDraft}
+              onChange={(event) => setModelDisplayNameDraft(event.target.value)}
+              placeholder="例如 深度思考模型"
               maxLength={120}
             />
           </div>

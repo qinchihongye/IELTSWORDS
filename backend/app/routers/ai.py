@@ -19,6 +19,7 @@ from ..config.settings import (
     OPENAI_AVAILABLE_MODELS,
     OPENAI_BASE_URL,
     OPENAI_MODEL,
+    OPENAI_DISPLAY_MODEL_NAME,
 )
 from ..database import get_db
 from ..dependencies import get_current_user
@@ -183,18 +184,13 @@ def mask_api_key(api_key: str | None) -> str | None:
     return f"{api_key[:4]}...{api_key[-4:]}"
 
 
-def get_active_source(current_user: models.User) -> str:
-    custom_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
-    return "custom" if custom_api_key else "system"
+def get_active_source(custom_config: schemas.AICustomConfig | None) -> str:
+    if custom_config and custom_config.api_key:
+        return "custom"
+    return "system"
 
 
-def get_available_models(current_user: models.User) -> list[str]:
-    custom_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
-    custom_model = normalize_user_model(getattr(current_user, "ai_model", None))
-
-    if custom_api_key:
-        return [custom_model or OPENAI_MODEL]
-
+def get_available_models() -> list[str]:
     return OPENAI_AVAILABLE_MODELS or [OPENAI_MODEL]
 
 
@@ -320,42 +316,31 @@ def ndjson_line(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False) + "\n"
 
 
-def build_settings_response(current_user: models.User) -> dict:
-    custom_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
-    custom_base_url = normalize_base_url(getattr(current_user, "ai_base_url", None))
-    custom_model = normalize_user_model(getattr(current_user, "ai_model", None))
-    uses_custom_config = bool(custom_api_key)
+def build_settings_response() -> dict:
     system_configured = bool(OPENAI_API_KEY)
-    active_source = "custom" if uses_custom_config else "system"
-    active_model = custom_model if uses_custom_config and custom_model else OPENAI_MODEL
-
+    
     return {
-        "custom_base_url": custom_base_url,
-        "custom_model": custom_model,
-        "has_api_key": bool(custom_api_key),
-        "masked_api_key": mask_api_key(custom_api_key),
-        "uses_custom_config": uses_custom_config,
         "system_configured": system_configured,
-        "can_use_ai": uses_custom_config or system_configured,
-        "active_source": active_source,
-        "active_model": active_model,
-        "available_models": get_available_models(current_user),
+        "can_use_ai": system_configured, # Frontend will evaluate custom config logic locally
+        "active_source": "system",
+        "active_model": OPENAI_MODEL,
+        "active_model_display_name": OPENAI_DISPLAY_MODEL_NAME,
+        "available_models": get_available_models(),
     }
 
 
-def resolve_active_ai_config(current_user: models.User, requested_model: str | None = None) -> tuple[str, str, str]:
-    custom_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
+def resolve_active_ai_config(requested_model: str | None = None, custom_config: schemas.AICustomConfig | None = None) -> tuple[str, str, str]:
     requested_model_name = normalize_user_model(requested_model)
 
-    if custom_api_key:
-        base_url = normalize_base_url(getattr(current_user, "ai_base_url", None)) or OPENAI_BASE_URL
-        model_name = requested_model_name or normalize_user_model(getattr(current_user, "ai_model", None)) or OPENAI_MODEL
-        return base_url, custom_api_key, model_name
+    if custom_config and custom_config.api_key:
+        base_url = normalize_base_url(custom_config.base_url) or OPENAI_BASE_URL
+        model_name = requested_model_name or normalize_user_model(custom_config.model) or OPENAI_MODEL
+        return base_url, custom_config.api_key, model_name
 
     if not OPENAI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI 助手尚未配置系统默认密钥，也未设置你的自定义 API Key",
+            detail="AI 助手尚未配置系统默认密钥，且未提供自定义配置",
         )
 
     return OPENAI_BASE_URL, OPENAI_API_KEY, requested_model_name or OPENAI_MODEL
@@ -442,9 +427,14 @@ async def stream_openai_compatible_api(
     }
 
     explicit_reasoning_parts: list[str] = []
-    raw_content_parts: list[str] = []
+    accumulated_content = ""
     streamed_answer = ""
     streamed_tagged_reasoning = ""
+    # Track whether we've ever seen a <think> tag to skip parsing entirely
+    # for models that never use inline reasoning tags (the common case).
+    might_have_think_tags = False
+    # Buffer content near potential tag boundaries to avoid splitting mid-tag.
+    _THINK_TAG_MAX_LEN = max(len(THINK_OPEN_TAG), len(THINK_CLOSE_TAG))
 
     try:
         async with httpx.AsyncClient(timeout=AI_REQUEST_TIMEOUT_SECONDS) as client:
@@ -477,8 +467,30 @@ async def stream_openai_compatible_api(
                         }
 
                     if content_delta:
-                        raw_content_parts.append(content_delta)
-                        next_answer, next_tagged_reasoning = split_tagged_reasoning_text("".join(raw_content_parts))
+                        accumulated_content += content_delta
+
+                        # Fast path: if we've never seen any hint of <think> tags,
+                        # just forward the delta directly without parsing.
+                        if not might_have_think_tags:
+                            lower_delta = content_delta.lower()
+                            lower_acc = accumulated_content.lower()
+                            # Check if this chunk or recent accumulated text
+                            # contains a potential start of a think tag.
+                            if THINK_OPEN_TAG[0] in lower_delta or THINK_OPEN_TAG in lower_acc:
+                                might_have_think_tags = True
+                            else:
+                                # No think tags anywhere — emit content directly.
+                                yield {
+                                    "type": "content_delta",
+                                    "delta": content_delta,
+                                }
+                                streamed_answer = accumulated_content
+                                continue
+
+                        # Slow path: think tags are present, do full parse.
+                        # Only re-parse the full accumulated text (unavoidable
+                        # when <think> tags can span across chunk boundaries).
+                        next_answer, next_tagged_reasoning = split_tagged_reasoning_text(accumulated_content)
 
                         if next_tagged_reasoning.startswith(streamed_tagged_reasoning):
                             tagged_reasoning_delta = next_tagged_reasoning[len(streamed_tagged_reasoning):]
@@ -536,69 +548,9 @@ async def get_ai_settings(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    获取当前用户的 AI 配置
+    获取系统默认 AI 配置
     """
-    return build_settings_response(current_user)
-
-
-@router.patch("/settings", response_model=schemas.AISettingsResponse)
-async def update_ai_settings(
-    payload: schemas.AISettingsUpdate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """
-    更新当前用户的 AI 配置
-    """
-    provided_fields = payload.model_fields_set
-    current_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
-
-    next_base_url = (
-        normalize_base_url(payload.base_url)
-        if "base_url" in provided_fields
-        else normalize_base_url(getattr(current_user, "ai_base_url", None))
-    )
-    next_model = (
-        normalize_user_model(payload.model)
-        if "model" in provided_fields
-        else normalize_user_model(getattr(current_user, "ai_model", None))
-    )
-    next_api_key = (
-        normalize_api_key(payload.api_key)
-        if "api_key" in provided_fields
-        else current_api_key
-    )
-
-    if not next_api_key and (next_base_url or next_model):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="首次启用自定义 AI 配置时，需要填写 API Key",
-        )
-
-    current_user.ai_base_url = next_base_url
-    current_user.ai_model = next_model
-    if "api_key" in provided_fields and next_api_key:
-        current_user.ai_api_key_encrypted = encrypt_secret(next_api_key)
-
-    db.commit()
-    db.refresh(current_user)
-    return build_settings_response(current_user)
-
-
-@router.delete("/settings", response_model=schemas.AISettingsResponse)
-async def reset_ai_settings(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """
-    恢复系统默认 AI 配置
-    """
-    current_user.ai_base_url = None
-    current_user.ai_model = None
-    current_user.ai_api_key_encrypted = None
-    db.commit()
-    db.refresh(current_user)
-    return build_settings_response(current_user)
+    return build_settings_response()
 
 
 @router.post("/settings/test", response_model=schemas.AISettingsTestResponse)
@@ -607,27 +559,18 @@ async def test_ai_settings(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    测试当前用户填写的 AI 连接配置
+    测试传入的 AI 连接配置
     """
-    saved_api_key = decrypt_secret(getattr(current_user, "ai_api_key_encrypted", None))
     input_api_key = normalize_api_key(payload.api_key)
-    api_key = input_api_key or saved_api_key or OPENAI_API_KEY
+    api_key = input_api_key or OPENAI_API_KEY
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="当前既没有系统默认 API Key，也没有可用的自定义 API Key",
+            detail="系统尚未配置默认 API Key，请提供自定义 API Key",
         )
 
-    base_url = (
-        normalize_base_url(payload.base_url)
-        or normalize_base_url(getattr(current_user, "ai_base_url", None))
-        or OPENAI_BASE_URL
-    )
-    model_name = (
-        normalize_user_model(payload.model)
-        or normalize_user_model(getattr(current_user, "ai_model", None))
-        or OPENAI_MODEL
-    )
+    base_url = normalize_base_url(payload.base_url) or OPENAI_BASE_URL
+    model_name = normalize_user_model(payload.model) or OPENAI_MODEL
 
     await call_openai_compatible_api(
         messages=[{"role": "user", "content": "Reply with OK only."}],
@@ -638,7 +581,7 @@ async def test_ai_settings(
         max_tokens=8,
     )
 
-    active_source = "custom" if (input_api_key or saved_api_key) else "system"
+    active_source = "custom" if input_api_key else "system"
 
     return {
         "success": True,
@@ -670,8 +613,8 @@ async def stream_chat_with_ai(
         request_messages.append({"role": "system", "content": context_message})
     request_messages.extend(cleaned_messages)
 
-    base_url, api_key, active_model = resolve_active_ai_config(current_user, payload.model)
-    active_source = get_active_source(current_user)
+    base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
+    active_source = get_active_source(payload.custom_config)
 
     async def event_stream():
         yield ndjson_line({
@@ -743,7 +686,7 @@ async def chat_with_ai(
         request_messages.append({"role": "system", "content": context_message})
     request_messages.extend(cleaned_messages)
 
-    base_url, api_key, active_model = resolve_active_ai_config(current_user, payload.model)
+    base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
     answer, reasoning = await call_openai_compatible_api(
         messages=request_messages,
         base_url=base_url,
