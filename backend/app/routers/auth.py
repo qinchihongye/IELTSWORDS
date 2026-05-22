@@ -210,7 +210,8 @@ async def upload_current_user_avatar(
             detail="仅 VIP 用户及以上可上传自定义头像",
         )
 
-    uploaded_avatar_url = await save_uploaded_avatar(current_user.id, avatar)
+    is_admin = current_user.role in ("admin", "super_admin")
+    uploaded_avatar_url = await save_uploaded_avatar(current_user.id, avatar, ignore_size_limit=is_admin)
     if current_user.avatar_type == "upload":
         delete_uploaded_avatar_file(current_user.avatar_value)
 

@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: frontendPort,
       host: true,
+      watch: {
+        ignored: ['**/src/assets/builtin-avatars/**']
+      }
     },
   }
 })

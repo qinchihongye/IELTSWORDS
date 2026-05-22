@@ -1,0 +1,686 @@
+{
+  "天鹅.png": {
+    "variety": "仙客来",
+    "avatars_name": "天鹅"
+  },
+  "丁香之青.png": {
+    "variety": "仙客来",
+    "avatars_name": "丁香之青"
+  },
+  "月光灯.png": {
+    "variety": "常春藤",
+    "avatars_name": "月光灯"
+  },
+  "雪莹.png": {
+    "variety": "常春藤",
+    "avatars_name": "雪莹"
+  },
+  "白雪姬.png": {
+    "variety": "常春藤",
+    "avatars_name": "白雪姬"
+  },
+  "植物鸟.png": {
+    "variety": "秋海棠",
+    "avatars_name": "植物鸟"
+  },
+  "猫耳朵.png": {
+    "variety": "秋海棠",
+    "avatars_name": "猫耳朵"
+  },
+  "丁力.png": {
+    "variety": "秋海棠",
+    "avatars_name": "丁力"
+  },
+  "二月.png": {
+    "variety": "秋海棠",
+    "avatars_name": "二月"
+  },
+  "白冰.png": {
+    "variety": "秋海棠",
+    "avatars_name": "白冰"
+  },
+  "粉锦鳟鱼.png": {
+    "variety": "秋海棠",
+    "avatars_name": "粉锦鳟鱼"
+  },
+  "富士山.png": {
+    "variety": "秋海棠",
+    "avatars_name": "富士山"
+  },
+  "素贞.png": {
+    "variety": "秋海棠",
+    "avatars_name": "素贞"
+  },
+  "塞拉山王.png": {
+    "variety": "秋海棠",
+    "avatars_name": "塞拉山王"
+  },
+  "黑天鹅.png": {
+    "variety": "秋海棠",
+    "avatars_name": "黑天鹅"
+  },
+  "微风.png": {
+    "variety": "秋海棠",
+    "avatars_name": "微风"
+  },
+  "几何.png": {
+    "variety": "秋海棠",
+    "avatars_name": "几何"
+  },
+  "超新星.png": {
+    "variety": "秋海棠",
+    "avatars_name": "超新星"
+  },
+  "罗伯特高登.png": {
+    "variety": "秋海棠",
+    "avatars_name": "罗伯特高登"
+  },
+  "假日雪花.png": {
+    "variety": "秋海棠",
+    "avatars_name": "假日雪花"
+  },
+  "鳟鱼.png": {
+    "variety": "秋海棠",
+    "avatars_name": "鳟鱼"
+  },
+  "紫霞仙子.png": {
+    "variety": "秋海棠",
+    "avatars_name": "紫霞仙子"
+  },
+  "粉红貂.png": {
+    "variety": "秋海棠",
+    "avatars_name": "粉红貂"
+  },
+  "福寿.png": {
+    "variety": "秋海棠",
+    "avatars_name": "福寿"
+  },
+  "鬼灯丸.png": {
+    "variety": "秋海棠",
+    "avatars_name": "鬼灯丸"
+  },
+  "乌头杂.png": {
+    "variety": "秋海棠",
+    "avatars_name": "乌头杂"
+  },
+  "粉旗鱼.png": {
+    "variety": "秋海棠",
+    "avatars_name": "粉旗鱼"
+  },
+  "富士山锦.png": {
+    "variety": "秋海棠",
+    "avatars_name": "富士山锦"
+  },
+  "唐米勒.png": {
+    "variety": "秋海棠",
+    "avatars_name": "唐米勒"
+  },
+  "胭脂锦.png": {
+    "variety": "秋海棠",
+    "avatars_name": "胭脂锦"
+  },
+  "白鹰狮.png": {
+    "variety": "秋海棠",
+    "avatars_name": "白鹰狮"
+  },
+  "阿雅.png": {
+    "variety": "秋海棠",
+    "avatars_name": "阿雅"
+  },
+  "三华李.png": {
+    "variety": "秋海棠",
+    "avatars_name": "三华李"
+  },
+  "秋之华.png": {
+    "variety": "秋海棠",
+    "avatars_name": "秋之华"
+  },
+  "月见樱.png": {
+    "variety": "秋海棠",
+    "avatars_name": "月见樱"
+  },
+  "辛巴达.png": {
+    "variety": "秋海棠",
+    "avatars_name": "辛巴达"
+  },
+  "纪梵希.png": {
+    "variety": "秋海棠",
+    "avatars_name": "纪梵希"
+  },
+  "沙丁鱼.png": {
+    "variety": "秋海棠",
+    "avatars_name": "沙丁鱼"
+  },
+  "帝王银珠.png": {
+    "variety": "秋海棠",
+    "avatars_name": "帝王银珠"
+  },
+  "红拖鞋.png": {
+    "variety": "秋海棠",
+    "avatars_name": "红拖鞋"
+  },
+  "阿修罗.png": {
+    "variety": "秋海棠",
+    "avatars_name": "阿修罗"
+  },
+  "北极夜.png": {
+    "variety": "秋海棠",
+    "avatars_name": "北极夜"
+  },
+  "安徽羽叶报春.png": {
+    "variety": "其他",
+    "avatars_name": "安徽羽叶报春"
+  },
+  "山乌龟.png": {
+    "variety": "其他",
+    "avatars_name": "山乌龟"
+  },
+  "花舞霓裳.png": {
+    "variety": "其他",
+    "avatars_name": "花舞霓裳"
+  },
+  "奶油龙沙宝石.png": {
+    "variety": "其他",
+    "avatars_name": "奶油龙沙宝石"
+  },
+  "白锦叶下珠.png": {
+    "variety": "其他",
+    "avatars_name": "白锦叶下珠"
+  },
+  "小木槿.png": {
+    "variety": "其他",
+    "avatars_name": "小木槿"
+  },
+  "婉尼拉.png": {
+    "variety": "其他",
+    "avatars_name": "婉尼拉"
+  },
+  "垂丝茉莉.png": {
+    "variety": "其他",
+    "avatars_name": "垂丝茉莉"
+  },
+  "蓝雪花.png": {
+    "variety": "其他",
+    "avatars_name": "蓝雪花"
+  },
+  "坦尼克.png": {
+    "variety": "其他",
+    "avatars_name": "坦尼克"
+  },
+  "冰淇淋.png": {
+    "variety": "其他",
+    "avatars_name": "冰淇淋"
+  },
+  "木村.png": {
+    "variety": "角堇",
+    "avatars_name": "木村"
+  },
+  "青之幻想.png": {
+    "variety": "角堇",
+    "avatars_name": "青之幻想"
+  },
+  "舞裙.png": {
+    "variety": "角堇",
+    "avatars_name": "舞裙"
+  },
+  "万华镜.png": {
+    "variety": "绣球",
+    "avatars_name": "万华镜"
+  },
+  "浪花.png": {
+    "variety": "绣球",
+    "avatars_name": "浪花"
+  },
+  "露娜.png": {
+    "variety": "绣球",
+    "avatars_name": "露娜"
+  },
+  "恋物语.png": {
+    "variety": "绣球",
+    "avatars_name": "恋物语"
+  },
+  "无尽夏新娘.png": {
+    "variety": "绣球",
+    "avatars_name": "无尽夏新娘"
+  },
+  "魔幻海洋.png": {
+    "variety": "绣球",
+    "avatars_name": "魔幻海洋"
+  },
+  "石灰灯.png": {
+    "variety": "绣球",
+    "avatars_name": "石灰灯"
+  },
+  "纱织小姐.png": {
+    "variety": "绣球",
+    "avatars_name": "纱织小姐"
+  },
+  "莫奈.png": {
+    "variety": "绣球",
+    "avatars_name": "莫奈"
+  },
+  "漫卷流光.png": {
+    "variety": "绣球",
+    "avatars_name": "漫卷流光"
+  },
+  "国绿.png": {
+    "variety": "绣球",
+    "avatars_name": "国绿"
+  },
+  "阿曼.png": {
+    "variety": "绣球",
+    "avatars_name": "阿曼"
+  },
+  "粉笔画.png": {
+    "variety": "绣球",
+    "avatars_name": "粉笔画"
+  },
+  "细高跟.png": {
+    "variety": "绣球",
+    "avatars_name": "细高跟"
+  },
+  "三河千鸟.png": {
+    "variety": "绣球",
+    "avatars_name": "三河千鸟"
+  },
+  "落跑新娘.png": {
+    "variety": "绣球",
+    "avatars_name": "落跑新娘"
+  },
+  "无尽夏.png": {
+    "variety": "绣球",
+    "avatars_name": "无尽夏"
+  },
+  "香草草莓.png": {
+    "variety": "绣球",
+    "avatars_name": "香草草莓"
+  },
+  "辉夜姬.png": {
+    "variety": "绣球",
+    "avatars_name": "辉夜姬"
+  },
+  "蒙娜丽莎.png": {
+    "variety": "绣球",
+    "avatars_name": "蒙娜丽莎"
+  },
+  "列车.png": {
+    "variety": "绣球",
+    "avatars_name": "列车"
+  },
+  "牵牛星.png": {
+    "variety": "绣球",
+    "avatars_name": "牵牛星"
+  },
+  "安妮公主.png": {
+    "variety": "绣球",
+    "avatars_name": "安妮公主"
+  },
+  "绿天鹅绒.png": {
+    "variety": "海芋",
+    "avatars_name": "绿天鹅绒"
+  },
+  "粉锦黑天鹅绒.png": {
+    "variety": "海芋",
+    "avatars_name": "粉锦黑天鹅绒"
+  },
+  "松染.png": {
+    "variety": "海芋",
+    "avatars_name": "松染"
+  },
+  "绿天鹅绒锦.png": {
+    "variety": "海芋",
+    "avatars_name": "绿天鹅绒锦"
+  },
+  "萨利安.png": {
+    "variety": "海芋",
+    "avatars_name": "萨利安"
+  },
+  "白犀牛.png": {
+    "variety": "海芋",
+    "avatars_name": "白犀牛"
+  },
+  "巧克力.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "巧克力"
+  },
+  "明脉.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "明脉"
+  },
+  "大理石皇后.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "大理石皇后"
+  },
+  "南美荧光.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "南美荧光"
+  },
+  "麦克道尔.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "麦克道尔"
+  },
+  "PP.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "PP"
+  },
+  "柠檬汁.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "柠檬汁"
+  },
+  "瓦萨维斯.png": {
+    "variety": "蔓绿绒",
+    "avatars_name": "瓦萨维斯"
+  },
+  "亚猴.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "亚猴"
+  },
+  "金刚狼.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "金刚狼"
+  },
+  "OMG.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "OMG"
+  },
+  "艾莎.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "艾莎"
+  },
+  "黄月.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "黄月"
+  },
+  "雪后.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "雪后"
+  },
+  "白二岐.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "白二岐"
+  },
+  "玉女.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "玉女"
+  },
+  "珍妮.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "珍妮"
+  },
+  "二岐.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "二岐"
+  },
+  "nano.png": {
+    "variety": "鹿角蕨",
+    "avatars_name": "nano"
+  },
+  "白色恋人.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "白色恋人"
+  },
+  "甜心.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "甜心"
+  },
+  "胡椒薄荷.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "胡椒薄荷"
+  },
+  "夏日微风.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "夏日微风"
+  },
+  "丹霞雀斑.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "丹霞雀斑"
+  },
+  "白蝴蝶.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "白蝴蝶"
+  },
+  "幻想曲.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "幻想曲"
+  },
+  "玛菲特小姐.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "玛菲特小姐"
+  },
+  "彩云.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "彩云"
+  },
+  "娇羞新娘.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "娇羞新娘"
+  },
+  "白月光.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "白月光"
+  },
+  "苹果花.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "苹果花"
+  },
+  "白锦鸟巢蕨.png": {
+    "variety": "蕨类",
+    "avatars_name": "白锦鸟巢蕨"
+  },
+  "夏雪银线蕨.png": {
+    "variety": "蕨类",
+    "avatars_name": "夏雪银线蕨"
+  },
+  "狼尾蕨.png": {
+    "variety": "蕨类",
+    "avatars_name": "狼尾蕨"
+  },
+  "洒金.png": {
+    "variety": "龟背竹",
+    "avatars_name": "洒金"
+  },
+  "白龟.png": {
+    "variety": "龟背竹",
+    "avatars_name": "白龟"
+  },
+  "仙洞锦.png": {
+    "variety": "龟背竹",
+    "avatars_name": "仙洞锦"
+  },
+  "白锦麒麟尾.png": {
+    "variety": "龟背竹",
+    "avatars_name": "白锦麒麟尾"
+  },
+  "仙洞.png": {
+    "variety": "龟背竹",
+    "avatars_name": "仙洞"
+  },
+  "薄荷龟背竹.png": {
+    "variety": "龟背竹",
+    "avatars_name": "薄荷龟背竹"
+  },
+  "薄荷麒麟尾.png": {
+    "variety": "龟背竹",
+    "avatars_name": "薄荷麒麟尾"
+  },
+  "美声柠檬黄.png": {
+    "variety": "矮牵牛",
+    "avatars_name": "美声柠檬黄"
+  },
+  "蜜瓜奶油.png": {
+    "variety": "矮牵牛",
+    "avatars_name": "蜜瓜奶油"
+  },
+  "伊丽莎白.png": {
+    "variety": "矮牵牛",
+    "avatars_name": "伊丽莎白"
+  },
+  "黑桃.png": {
+    "variety": "花烛",
+    "avatars_name": "黑桃"
+  },
+  "铜锣烧.png": {
+    "variety": "花烛",
+    "avatars_name": "铜锣烧"
+  },
+  "帝王.png": {
+    "variety": "花烛",
+    "avatars_name": "帝王"
+  },
+  "SKG银.png": {
+    "variety": "花烛",
+    "avatars_name": "SKG银"
+  },
+  "火鹤后.png": {
+    "variety": "花烛",
+    "avatars_name": "火鹤后"
+  },
+  "维塔.png": {
+    "variety": "花烛",
+    "avatars_name": "维塔"
+  },
+  "KOS.png": {
+    "variety": "花烛",
+    "avatars_name": "KOS"
+  },
+  "豌豆荚.png": {
+    "variety": "花烛",
+    "avatars_name": "豌豆荚"
+  },
+  "克莱恩.png": {
+    "variety": "花烛",
+    "avatars_name": "克莱恩"
+  },
+  "蓝色沙龙舞.png": {
+    "variety": "铁线莲",
+    "avatars_name": "蓝色沙龙舞"
+  },
+  "乌托邦.png": {
+    "variety": "铁线莲",
+    "avatars_name": "乌托邦"
+  },
+  "倒影.png": {
+    "variety": "铁线莲",
+    "avatars_name": "倒影"
+  },
+  "伊萨哥.png": {
+    "variety": "铁线莲",
+    "avatars_name": "伊萨哥"
+  },
+  "幻影.png": {
+    "variety": "铁线莲",
+    "avatars_name": "幻影"
+  },
+  "魔法喷泉.png": {
+    "variety": "铁线莲",
+    "avatars_name": "魔法喷泉"
+  },
+  "水晶喷泉.png": {
+    "variety": "铁线莲",
+    "avatars_name": "水晶喷泉"
+  },
+  "绿玉.png": {
+    "variety": "铁线莲",
+    "avatars_name": "绿玉"
+  },
+  "约瑟芬.png": {
+    "variety": "铁线莲",
+    "avatars_name": "约瑟芬"
+  },
+  "纸麟托菊.png": {
+    "variety": "菊",
+    "avatars_name": "纸麟托菊"
+  },
+  "瑞云殿.png": {
+    "variety": "菊",
+    "avatars_name": "瑞云殿"
+  },
+  "沉香台.png": {
+    "variety": "菊",
+    "avatars_name": "沉香台"
+  },
+  "十丈垂帘.png": {
+    "variety": "菊",
+    "avatars_name": "十丈垂帘"
+  },
+  "西施浣纱.png": {
+    "variety": "菊",
+    "avatars_name": "西施浣纱"
+  },
+  "墨荷.png": {
+    "variety": "菊",
+    "avatars_name": "墨荷"
+  },
+  "绿云.png": {
+    "variety": "菊",
+    "avatars_name": "绿云"
+  },
+  "绿水青山.png": {
+    "variety": "菊",
+    "avatars_name": "绿水青山"
+  },
+  "盘龙嫦娥.png": {
+    "variety": "菊",
+    "avatars_name": "盘龙嫦娥"
+  },
+  "绿牡丹.png": {
+    "variety": "菊",
+    "avatars_name": "绿牡丹"
+  },
+  "云鸾叠翠.png": {
+    "variety": "菊",
+    "avatars_name": "云鸾叠翠"
+  },
+  "凤凰振羽.png": {
+    "variety": "菊",
+    "avatars_name": "凤凰振羽"
+  },
+  "白雪塔.png": {
+    "variety": "菊",
+    "avatars_name": "白雪塔"
+  },
+  "盘龙碧玉.png": {
+    "variety": "菊",
+    "avatars_name": "盘龙碧玉"
+  },
+  "貂蝉拜月.png": {
+    "variety": "菊",
+    "avatars_name": "貂蝉拜月"
+  },
+  "泉乡汽笛.png": {
+    "variety": "菊",
+    "avatars_name": "泉乡汽笛"
+  },
+  "猫眼荔枝.png": {
+    "variety": "菊",
+    "avatars_name": "猫眼荔枝"
+  },
+  "沽水流霞.png": {
+    "variety": "菊",
+    "avatars_name": "沽水流霞"
+  },
+  "兼六淡.png": {
+    "variety": "菊",
+    "avatars_name": "兼六淡"
+  },
+  "鹅毛粉黛.png": {
+    "variety": "菊",
+    "avatars_name": "鹅毛粉黛"
+  },
+  "蜀国夫人.png": {
+    "variety": "菊",
+    "avatars_name": "蜀国夫人"
+  },
+  "国华雪桥.png": {
+    "variety": "菊",
+    "avatars_name": "国华雪桥"
+  },
+  "帅旗.png": {
+    "variety": "菊",
+    "avatars_name": "帅旗"
+  },
+  "点绛唇.png": {
+    "variety": "秋海棠",
+    "avatars_name": "点绛唇"
+  }
+}

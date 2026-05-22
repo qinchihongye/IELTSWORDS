@@ -125,14 +125,14 @@ def delete_uploaded_avatar_file(avatar_value: str | None):
         file_path.unlink(missing_ok=True)
 
 
-def _read_limited_upload(content: bytes):
+def _read_limited_upload(content: bytes, ignore_size_limit: bool = False):
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="上传文件不能为空",
         )
 
-    if len(content) > MAX_AVATAR_SIZE_BYTES:
+    if not ignore_size_limit and len(content) > MAX_AVATAR_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="头像大小不能超过 2MB",
@@ -189,7 +189,7 @@ def _build_avatar_png(content: bytes, circular: bool = False) -> bytes:
         ) from exc
 
 
-async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
+async def save_uploaded_avatar(user_id: int, file: UploadFile, ignore_size_limit: bool = False) -> str:
     suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
     if not suffix:
         raw_suffix = Path(file.filename or "").suffix.lower()
@@ -201,8 +201,8 @@ async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
             detail="仅支持 PNG、JPG、WEBP 格式头像",
         )
 
-    content = await file.read(MAX_AVATAR_SIZE_BYTES + 1)
-    _read_limited_upload(content)
+    content = await file.read()
+    _read_limited_upload(content, ignore_size_limit)
     avatar_bytes = _build_avatar_png(content, circular=False)
 
     filename = f"user_{user_id}_{uuid4().hex}.png"
@@ -212,19 +212,7 @@ async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
 
 
 def _seed_builtin_avatars_from_frontend():
-    """将前端打包的内置头像复制到 data/builtin-avatars/ 目录。"""
-    frontend_assets_dir = BASE_DIR / "frontend" / "src" / "assets" / "builtin-avatars"
-    if not frontend_assets_dir.exists():
-        return
-
-    for src_path in frontend_assets_dir.iterdir():
-        if not src_path.is_file():
-            continue
-        if src_path.suffix.lower() not in ALLOWED_SUFFIXES:
-            continue
-        dest_path = BUILTIN_AVATAR_UPLOAD_DIR / src_path.name
-        if not dest_path.exists():
-            dest_path.write_bytes(src_path.read_bytes())
+    pass
 
 
 def _scan_builtin_avatar_files() -> list[str]:
@@ -270,8 +258,8 @@ async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avat
             detail="仅支持 PNG、JPG、WEBP 格式头像",
         )
 
-    content = await file.read(MAX_AVATAR_SIZE_BYTES + 1)
-    _read_limited_upload(content)
+    content = await file.read()
+    _read_limited_upload(content, ignore_size_limit=True)
     img_bytes = _build_avatar_png(content, circular=True)
 
     # Force PNG to support transparency and strip metadata.
@@ -282,11 +270,6 @@ async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avat
     try:
         # Save to backend dynamic storage
         destination.write_bytes(img_bytes)
-        
-        # Replicate/copy to frontend assets directory so they can be bundled/committed
-        frontend_assets_dir = BASE_DIR / "frontend" / "src" / "assets" / "builtin-avatars"
-        if frontend_assets_dir.exists():
-            (frontend_assets_dir / filename).write_bytes(img_bytes)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -303,10 +286,6 @@ async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avat
                 pass
         metadata[filename] = {"variety": variety, "avatars_name": avatars_name}
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        
-        if frontend_assets_dir.exists():
-            (frontend_assets_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-
     refresh_valid_builtin_keys()
     return f"{BUILTIN_AVATAR_URL_PREFIX}/{filename}"
 
@@ -327,13 +306,6 @@ def delete_builtin_avatar_file(filename: str):
         )
     if file_path.exists():
         file_path.unlink()
-    
-    # Also delete from frontend assets directory to keep them perfectly in sync
-    frontend_assets_dir = BASE_DIR / "frontend" / "src" / "assets" / "builtin-avatars"
-    if frontend_assets_dir.exists():
-        frontend_file_path = frontend_assets_dir / filename
-        if frontend_file_path.exists():
-            frontend_file_path.unlink()
             
     refresh_valid_builtin_keys()
 

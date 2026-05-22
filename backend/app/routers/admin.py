@@ -292,6 +292,32 @@ async def list_builtin_avatars(
 
 from fastapi import Form
 
+@router.get("/preset-avatars")
+async def list_preset_avatar_files(current_user=Depends(require_super_admin)):
+    from ..config.settings import BASE_DIR
+    import os
+    preset_dir = BASE_DIR / "预设头像"
+    if not preset_dir.exists():
+        return []
+
+    files_list = []
+    for root, _, files in os.walk(preset_dir):
+        for file in files:
+            file_lower = file.lower()
+            if file_lower.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                rel_dir = os.path.relpath(root, preset_dir)
+                variety = rel_dir if rel_dir != "." else "默认分类"
+                avatars_name = file.rsplit('.', 1)[0]
+                
+                # We need the relative path to build the URL
+                url_path = f"{rel_dir}/{file}" if rel_dir != "." else file
+                files_list.append({
+                    "url": f"/preset-avatars/{url_path}",
+                    "variety": variety,
+                    "avatars_name": avatars_name
+                })
+    return files_list
+
 @router.post("/builtin-avatars/upload")
 async def upload_builtin_avatar(
     file: UploadFile = File(...),

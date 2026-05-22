@@ -73,6 +73,22 @@ const itemVariants = {
   }
 };
 
+const renderViewModeOption = (icon, title) => (
+  <Tooltip title={title}>
+    <span
+      className="layout-segmented-icon"
+      aria-label={title}
+      title={title}
+    >
+      {icon}
+    </span>
+  </Tooltip>
+);
+
+const TABLE_MAX_VISIBLE_ROWS = 4;
+const TABLE_ESTIMATED_ROW_HEIGHT = 74;
+const TABLE_SCROLL_BODY_HEIGHT = TABLE_MAX_VISIBLE_ROWS * TABLE_ESTIMATED_ROW_HEIGHT;
+
 // Utility to crop image inside a canvas and return a transparent PNG blob
 const getCroppedImg = (imageSrc, croppedAreaPixels) => {
   return new Promise((resolve, reject) => {
@@ -147,6 +163,7 @@ const AdminBuiltinAvatars = () => {
   // Batch upload states
   const [batchQueue, setBatchQueue] = useState([]);
   const [currentBatchItem, setCurrentBatchItem] = useState(null);
+  const [batchTotal, setBatchTotal] = useState(0);
   const folderInputRef = React.useRef(null);
 
   const fetchList = useCallback(async () => {
@@ -211,50 +228,48 @@ const AdminBuiltinAvatars = () => {
     return false; // Prevent automatic uploading
   }, []);
 
-  const handleFolderSelect = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    
-    const existingNames = new Set(avatars.map(a => a.label));
-    const queue = [];
-    
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
+  const handleAutoPresetScan = async () => {
+    try {
+      message.loading({ content: '正在扫描预设头像目录...', key: 'presetScan' });
+      const response = await apiClient.get('/api/admin/preset-avatars');
+      const files = response.data || [];
       
-      const pathParts = file.webkitRelativePath.split('/');
-      // Expecting structure like: "预设头像/彩叶芋/白蝴蝶.jpg"
-      if (pathParts.length >= 3) {
-        const variety = pathParts[pathParts.length - 2];
-        const fileName = pathParts[pathParts.length - 1];
-        const avatars_name = fileName.replace(/\.[^.]+$/, '');
-        
-        if (!existingNames.has(avatars_name)) {
-          queue.push({ file, variety, avatars_name });
-        }
+      if (!files.length) {
+        message.warning({ content: '后端未找到【预设头像】文件夹或夹内无图片', key: 'presetScan' });
+        return;
       }
+      
+      const existingNames = new Set(avatars.map(a => a.label));
+      const queue = files.filter(f => !existingNames.has(f.avatars_name));
+      
+      if (queue.length === 0) {
+        message.info({ content: '选定的预设文件夹中没有发现新头像，或所有头像均已存在', key: 'presetScan' });
+        return;
+      }
+      
+      message.success({ content: `自动比对完成，发现 ${queue.length} 个新头像待处理`, key: 'presetScan' });
+      setBatchQueue(queue);
+      setBatchTotal(queue.length);
+      await startCropForItem(queue[0]);
+    } catch (error) {
+      console.error('扫描预设头像失败:', error);
+      message.error({ content: '扫描预设头像失败', key: 'presetScan' });
     }
-    
-    // Clear input so same folder can be selected again
-    if (folderInputRef.current) folderInputRef.current.value = '';
-    
-    if (queue.length === 0) {
-      message.info('选定的预设文件夹中没有发现新头像，或所有头像均已存在');
-      return;
-    }
-    
-    message.success(`自动比对完成，发现 ${queue.length} 个新头像待上传`);
-    setBatchQueue(queue);
-    startCropForItem(queue[0]);
   };
 
-  const startCropForItem = (item) => {
+  const startCropForItem = async (item) => {
     setCurrentBatchItem(item);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCropImage(reader.result);
+    try {
+      // Fetch the image as blob to pass into Cropper
+      const response = await fetch(`${builtinApiBase}${item.url}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      
+      setCropImage(objectUrl);
       setUploadFileName(`${item.avatars_name}.png`);
-    };
-    reader.readAsDataURL(item.file);
+    } catch (error) {
+      message.error(`无法加载图片: ${item.avatars_name}`);
+    }
   };
 
   // Submit the cropped circular PNG Blob to backend
@@ -515,7 +530,7 @@ const AdminBuiltinAvatars = () => {
             <div className="upload-half">
               <div
                 className="premium-dragger folder-dragger"
-                onClick={() => folderInputRef.current?.click()}
+                onClick={handleAutoPresetScan}
               >
                 <div className="dragger-interior">
                   <p className="dragger-icon-pulse">
@@ -523,18 +538,9 @@ const AdminBuiltinAvatars = () => {
                   </p>
                   <h3 className="dragger-title" style={{ color: '#10b981' }}>从【预设头像】文件夹上传</h3>
                   <p className="dragger-description">
-                    自动扫描未上传头像并连续裁剪 (读取品种与名称)
+                    自动后端扫描并连续裁剪 (读取品种与名称)
                   </p>
                 </div>
-                <input
-                  type="file"
-                  webkitdirectory="true"
-                  directory="true"
-                  multiple
-                  style={{ display: 'none' }}
-                  ref={folderInputRef}
-                  onChange={handleFolderSelect}
-                />
               </div>
             </div>
           </div>
@@ -581,8 +587,8 @@ const AdminBuiltinAvatars = () => {
                   value={viewMode}
                   onChange={setViewMode}
                   options={[
-                    { label: <Tooltip title="紧凑圆泡阵列"><AppstoreOutlined /></Tooltip>, value: 'grid' },
-                    { label: <Tooltip title="详细数据清单"><UnorderedListOutlined /></Tooltip>, value: 'list' }
+                    { label: renderViewModeOption(<AppstoreOutlined />, '网格视图'), value: 'grid' },
+                    { label: renderViewModeOption(<UnorderedListOutlined />, '列表视图'), value: 'list' }
                   ]}
                   className="layout-segmented-glass"
                 />
@@ -685,6 +691,7 @@ const AdminBuiltinAvatars = () => {
                 columns={columns}
                 rowKey="key"
                 pagination={false}
+                scroll={{ y: TABLE_SCROLL_BODY_HEIGHT }}
                 className="premium-glass-table"
                 rowClassName={(record) => record.is_hardcoded ? 'table-row-default' : 'table-row-custom'}
               />
@@ -722,7 +729,7 @@ const AdminBuiltinAvatars = () => {
             <div style={{ flex: 1, textAlign: 'left' }}>
               {currentBatchItem && (
                 <Text type="success" strong>
-                  批量队列剩余待处理：{batchQueue.length} 个
+                  当前第 {batchTotal - batchQueue.length + 1} 个 / 共 {batchTotal} 个（剩余 {batchQueue.length - 1} 个待处理）
                 </Text>
               )}
             </div>
@@ -1148,6 +1155,14 @@ const css = `
   font-weight: 700;
 }
 
+.layout-segmented-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+}
+
 /* REDESIGNED: Compact Avatar Bubble Grid View */
 .compact-avatar-bubble-grid {
   display: grid;
@@ -1302,6 +1317,31 @@ const css = `
   background: transparent !important;
 }
 
+.premium-glass-table .ant-table-container {
+  border-start-start-radius: 16px;
+  border-start-end-radius: 16px;
+  border-end-start-radius: 16px;
+  border-end-end-radius: 16px;
+}
+
+.premium-glass-table .ant-table-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.8) rgba(241, 245, 249, 0.6);
+}
+
+.premium-glass-table .ant-table-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.premium-glass-table .ant-table-body::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.65);
+}
+
+.premium-glass-table .ant-table-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.86);
+  border-radius: 999px;
+}
+
 .premium-glass-table .ant-table-thead > tr > th {
   background: rgba(241, 245, 249, 0.7) !important;
   color: #475569 !important;
@@ -1311,6 +1351,9 @@ const css = `
 
 .premium-glass-table .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(226, 232, 240, 0.6) !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+  vertical-align: middle;
 }
 
 .premium-glass-table .ant-table-tbody > tr:hover > td {

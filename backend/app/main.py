@@ -47,6 +47,10 @@ BUILTIN_AVATARS_DIR = BASE_DIR / "data" / "builtin-avatars"
 BUILTIN_AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/builtin-avatars", StaticFiles(directory=str(BUILTIN_AVATARS_DIR)), name="builtin-avatars")
 
+PRESET_AVATARS_DIR = BASE_DIR / "预设头像"
+if PRESET_AVATARS_DIR.exists():
+    app.mount("/preset-avatars", StaticFiles(directory=str(PRESET_AVATARS_DIR)), name="preset-avatars")
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
