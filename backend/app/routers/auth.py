@@ -111,7 +111,8 @@ async def verify_password_reset_email(
 @router.post("/password-reset")
 async def reset_password(
     payload: schemas.PasswordReset,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _rate=Depends(auth_rate_limit),
 ):
     """
     根据已验证邮箱重置密码

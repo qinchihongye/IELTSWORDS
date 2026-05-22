@@ -86,8 +86,6 @@ const refreshBuiltinOptions = () => {
   ];
 };
 
-const BUILTIN_KEYS_SET = new Set(BUILTIN_AVATAR_FILES);
-
 export const fetchDynamicBuiltinAvatars = async () => {
   try {
     const response = await apiClient.get('/api/avatars/builtin');

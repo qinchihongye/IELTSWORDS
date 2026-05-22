@@ -1,10 +1,12 @@
 """
-AI 助手相关 API
+Berry 相关 API
 """
 
 import json
 import re
+import socket
 from typing import Any, AsyncIterator
+from ipaddress import ip_address
 from urllib.parse import urlparse
 
 import httpx
@@ -15,16 +17,22 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config.settings import (
     AI_REQUEST_TIMEOUT_SECONDS,
+    BOCHA_SEARCH_API_KEY,
+    BOCHA_SEARCH_COUNT,
+    BOCHA_SEARCH_FRESHNESS,
+    BOCHA_SEARCH_SUMMARY,
+    BOCHA_SEARCH_TIMEOUT_SECONDS,
+    BOCHA_SEARCH_URL,
     OPENAI_API_KEY,
     OPENAI_AVAILABLE_MODELS,
     OPENAI_BASE_URL,
     OPENAI_MODEL,
     OPENAI_DISPLAY_MODEL_NAME,
+    OPENAI_ENABLE_THINKING,
 )
 from ..database import get_db
 from ..dependencies import get_current_user
 from ..logging_config import get_logger
-from ..secret_crypto import decrypt_secret, encrypt_secret
 
 router = APIRouter()
 MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._:/-]+$")
@@ -34,13 +42,16 @@ THINK_OPEN_TAG = "<think>"
 THINK_CLOSE_TAG = "</think>"
 logger = get_logger(__name__)
 
+BLOCKED_CUSTOM_AI_HOSTS = {"localhost", "localhost.localdomain"}
+ALLOWED_SEARCH_FRESHNESS = {"oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"}
+
 
 def build_system_prompt(current_user: models.User, context: dict | None) -> str:
     page = (context or {}).get("page") or "general"
     role = current_user.role or "user"
 
     lines = [
-        "你是 IELTS 单词学习应用里的 AI 助手。",
+        "你叫 Berry，是 IELTS 单词学习应用里的 AI 学习伙伴。",
         "你的主要任务是帮助用户理解单词、纠错、总结规律、制定复习建议。",
         "默认使用简洁自然的中文回答，必要时保留英文原词、词组、例句。",
         "优先结合页面上下文作答，但不要机械复述上下文字段。",
@@ -51,6 +62,7 @@ def build_system_prompt(current_user: models.User, context: dict | None) -> str:
         "强调单词、词组、词根、词缀时，优先使用反引号，例如 `atmosphere`、`atmo`、`sphere`，不要输出不成对的 * 或 **。",
         "除非明确要做引用说明，不要把普通正文写成 > 引用块。",
         "如果给例句，优先使用如下结构：例句：... 换行 译文：...；必要时再补一行用法：...",
+        "如果用户询问“最新的大模型”“有哪些模型”“模型清单”这类问题，优先列出具体模型/产品、发布方、能力特点和时间信息，再总结趋势。",
         f"当前用户角色: {role}",
         f"当前页面类型: {page}",
     ]
@@ -116,6 +128,262 @@ def build_context_message(context: dict | None) -> str | None:
     return "以下是当前页面上下文，仅用于帮助你更贴合当前学习场景：\n" + "\n".join(lines)
 
 
+FOLLOW_UP_SEARCH_HINTS = (
+    "当前页面",
+    "当前正在看",
+    "当前单词",
+    "结合",
+    "下一步",
+    "学习建议",
+    "继续",
+    "上面",
+    "前面",
+    "刚才",
+    "这个",
+    "这些",
+    "总结",
+    "这个单词",
+    "这道题",
+    "讲透",
+    "记忆技巧",
+    "错因",
+)
+
+
+def get_latest_user_query(messages: list[dict]) -> str:
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = str(message.get("content") or "").strip()
+        if content:
+            return content[:300]
+    return ""
+
+
+def is_follow_up_search_query(query: str) -> bool:
+    value = re.sub(r"\s+", "", query or "")
+    if not value:
+        return False
+    if len(value) <= 28 and any(hint in value for hint in FOLLOW_UP_SEARCH_HINTS):
+        return True
+    return "当前页面的内容" in value or "下一步学习建议" in value
+
+
+def build_contextual_search_query(query: str, context: dict | None) -> str:
+    payload = (context or {}).get("payload") or {}
+    page = (context or {}).get("page") or "general"
+    normalized_query = truncate_search_text(query, 300)
+    compact_query = re.sub(r"\s+", "", normalized_query)
+
+    current_word = str(payload.get("word") or payload.get("selectedWord") or "").strip()
+    if page == "learning" and current_word:
+        if current_word.lower() in normalized_query.lower():
+            return normalized_query
+        if any(hint in compact_query for hint in FOLLOW_UP_SEARCH_HINTS):
+            parts = [current_word, "单词"]
+            if "记忆" in normalized_query:
+                parts.append("记忆技巧")
+            if "例句" in normalized_query:
+                parts.append("例句")
+            if "辨析" in normalized_query:
+                parts.append("近义辨析")
+            if "释义" in normalized_query or "讲透" in normalized_query:
+                parts.append("释义")
+            return truncate_search_text(" ".join(dict.fromkeys(parts)), 300)
+
+    selected_word = str(payload.get("selectedWord") or payload.get("word") or "").strip()
+    question_text = str(payload.get("questionText") or "").strip()
+    if page in {"quiz", "mistake-book"} and selected_word:
+        if selected_word.lower() in normalized_query.lower():
+            return normalized_query
+        if any(hint in compact_query for hint in FOLLOW_UP_SEARCH_HINTS):
+            parts = [selected_word, "单词"]
+            if question_text:
+                parts.append(question_text[:80])
+            return truncate_search_text(" ".join(dict.fromkeys(parts)), 300)
+
+    return normalized_query
+
+
+def build_web_search_query(messages: list[dict], context: dict | None = None) -> str:
+    latest_query = get_latest_user_query(messages)
+    if not latest_query:
+        return ""
+
+    contextual_query = build_contextual_search_query(latest_query, context)
+    if contextual_query != truncate_search_text(latest_query, 300):
+        return contextual_query
+
+    if not is_follow_up_search_query(latest_query):
+        return latest_query
+
+    previous_topic = ""
+    seen_latest = False
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = str(message.get("content") or "").strip()
+        if not content:
+            continue
+        if not seen_latest and content == latest_query:
+            seen_latest = True
+            continue
+        if content != latest_query and not is_follow_up_search_query(content):
+            previous_topic = content
+            break
+
+    if previous_topic:
+        return truncate_search_text(f"{previous_topic} {latest_query}", 300)
+
+    return ""
+
+
+def truncate_search_text(value: Any, max_length: int = 500) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[:max_length]}..."
+
+
+def extract_web_search_items(body: dict[str, Any]) -> list[dict[str, str]]:
+    raw_items = (
+        body.get("data", {})
+        .get("webPages", {})
+        .get("value", [])
+    )
+    if not isinstance(raw_items, list):
+        return []
+
+    items: list[dict[str, str]] = []
+    for raw_item in raw_items[:BOCHA_SEARCH_COUNT]:
+        if not isinstance(raw_item, dict):
+            continue
+
+        title = truncate_search_text(
+            raw_item.get("name")
+            or raw_item.get("title")
+            or raw_item.get("siteName")
+            or "未命名结果",
+            120,
+        )
+        url = truncate_search_text(raw_item.get("url") or raw_item.get("displayUrl"), 240)
+        summary = truncate_search_text(raw_item.get("summary") or raw_item.get("snippet"), 700)
+
+        if not summary:
+            continue
+
+        items.append({
+            "title": title,
+            "url": url,
+            "summary": summary,
+        })
+
+    return items
+
+
+def build_web_search_context_message(query: str, results: list[dict[str, str]]) -> str:
+    lines = [
+        "以下是 Berry 刚刚获取的联网搜索结果，仅用于回答当前用户问题。",
+        "请优先基于这些结果作答；如果结果不足或互相矛盾，请明确说明不确定性。",
+        "涉及搜索结果中的事实、数据、机构预测或新闻动态时，必须在对应句子末尾标注来源编号，例如 [1]、[2]。",
+        "回答末尾请增加“来源”小节，列出用到的来源编号、标题和链接。",
+        "不要编造搜索结果之外的实时信息。",
+        f"搜索词: {query}",
+    ]
+
+    for index, item in enumerate(results, start=1):
+        lines.append("")
+        lines.append(f"[{index}] {item['title']}")
+        if item.get("url"):
+            lines.append(f"链接: {item['url']}")
+        lines.append(f"摘要: {item['summary']}")
+
+    return "\n".join(lines)
+
+
+def normalize_web_search_freshness(freshness: str | None = None) -> str:
+    if freshness in ALLOWED_SEARCH_FRESHNESS:
+        return freshness
+    if BOCHA_SEARCH_FRESHNESS in ALLOWED_SEARCH_FRESHNESS:
+        return BOCHA_SEARCH_FRESHNESS
+    return "noLimit"
+
+
+async def perform_web_search(query: str, freshness: str | None = None) -> list[dict[str, str]]:
+    if not BOCHA_SEARCH_URL or not BOCHA_SEARCH_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="联网搜索尚未配置，请先在 .env 中配置搜索服务",
+        )
+
+    normalized_query = query.strip()
+    if not normalized_query:
+        return []
+
+    payload = {
+        "query": normalized_query,
+        "summary": BOCHA_SEARCH_SUMMARY,
+        "freshness": normalize_web_search_freshness(freshness),
+        "count": BOCHA_SEARCH_COUNT,
+    }
+    headers = {
+        "Authorization": f"Bearer {BOCHA_SEARCH_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    timeout = httpx.Timeout(
+        connect=min(BOCHA_SEARCH_TIMEOUT_SECONDS, 10),
+        read=BOCHA_SEARCH_TIMEOUT_SECONDS,
+        write=BOCHA_SEARCH_TIMEOUT_SECONDS,
+        pool=BOCHA_SEARCH_TIMEOUT_SECONDS,
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(BOCHA_SEARCH_URL, json=payload, headers=headers)
+            response.raise_for_status()
+            body = response.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning("Web search service returned %s", exc.response.status_code)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="联网搜索服务暂时不可用",
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.warning("Web search connection failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="联网搜索连接失败，请检查搜索服务配置或网络",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected web search error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="联网搜索返回格式异常",
+        ) from exc
+
+    return extract_web_search_items(body)
+
+
+async def build_web_search_message_if_enabled(
+    enabled: bool | None,
+    cleaned_messages: list[dict],
+    context: dict | None = None,
+    freshness: str | None = None,
+) -> str | None:
+    if not enabled:
+        return None
+
+    query = build_web_search_query(cleaned_messages, context)
+    if not query:
+        return None
+
+    results = await perform_web_search(query, freshness)
+    if not results:
+        return f"联网搜索已开启，但没有检索到与“{query}”直接相关的结果。请基于已有上下文谨慎回答。"
+
+    return build_web_search_context_message(query, results)
+
+
 def normalize_user_model(model: str | None) -> str | None:
     if model is None:
         return None
@@ -133,7 +401,36 @@ def normalize_user_model(model: str | None) -> str | None:
     return value
 
 
-def normalize_base_url(base_url: str | None) -> str | None:
+def is_blocked_custom_ai_host(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+
+    host = hostname.strip("[]").strip().lower().rstrip(".")
+    if host in BLOCKED_CUSTOM_AI_HOSTS or host.endswith(".localhost"):
+        return True
+
+    try:
+        return not ip_address(host).is_global
+    except ValueError:
+        pass
+
+    try:
+        address_info = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return True
+
+    for item in address_info:
+        address = item[4][0]
+        try:
+            if not ip_address(address).is_global:
+                return True
+        except ValueError:
+            return True
+
+    return False
+
+
+def normalize_base_url(base_url: str | None, require_public_https: bool = False) -> str | None:
     if base_url is None:
         return None
 
@@ -153,6 +450,23 @@ def normalize_base_url(base_url: str | None) -> str | None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Base URL 格式不正确，请填写完整的 http(s) 地址",
         )
+
+    if require_public_https:
+        if parsed.scheme != "https":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="自定义 Base URL 必须使用 HTTPS",
+            )
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="自定义 Base URL 不能包含用户名、密码、查询参数或片段",
+            )
+        if is_blocked_custom_ai_host(parsed.hostname):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="自定义 Base URL 必须指向可公开访问的 AI 服务地址",
+            )
 
     return value
 
@@ -326,6 +640,8 @@ def build_settings_response() -> dict:
         "active_model": OPENAI_MODEL,
         "active_model_display_name": OPENAI_DISPLAY_MODEL_NAME,
         "available_models": get_available_models(),
+        "thinking_enabled": OPENAI_ENABLE_THINKING,
+        "web_search_freshness": normalize_web_search_freshness(),
     }
 
 
@@ -333,17 +649,54 @@ def resolve_active_ai_config(requested_model: str | None = None, custom_config: 
     requested_model_name = normalize_user_model(requested_model)
 
     if custom_config and custom_config.api_key:
-        base_url = normalize_base_url(custom_config.base_url) or OPENAI_BASE_URL
+        base_url = normalize_base_url(custom_config.base_url, require_public_https=True) or OPENAI_BASE_URL
         model_name = requested_model_name or normalize_user_model(custom_config.model) or OPENAI_MODEL
         return base_url, custom_config.api_key, model_name
 
     if not OPENAI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI 助手尚未配置系统默认密钥，且未提供自定义配置",
+            detail="Berry 尚未配置系统默认密钥，且未提供自定义配置",
         )
 
     return OPENAI_BASE_URL, OPENAI_API_KEY, requested_model_name or OPENAI_MODEL
+
+
+def build_chat_completion_payload(
+    messages: list[dict],
+    model_name: str,
+    temperature: float,
+    max_tokens: int | None = None,
+    stream: bool = False,
+    enable_thinking: bool | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": stream,
+    }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if enable_thinking is not None:
+        payload["chat_template_kwargs"] = {
+            "enable_thinking": enable_thinking,
+        }
+    return payload
+
+
+def build_httpx_timeout(enable_thinking: bool | None = None, stream: bool = False) -> httpx.Timeout:
+    connect_timeout = min(AI_REQUEST_TIMEOUT_SECONDS, 10)
+    read_timeout = AI_REQUEST_TIMEOUT_SECONDS
+    if stream or enable_thinking:
+        read_timeout = max(AI_REQUEST_TIMEOUT_SECONDS, 120)
+
+    return httpx.Timeout(
+        connect=connect_timeout,
+        read=read_timeout,
+        write=AI_REQUEST_TIMEOUT_SECONDS,
+        pool=AI_REQUEST_TIMEOUT_SECONDS,
+    )
 
 
 async def call_openai_compatible_api(
@@ -353,14 +706,16 @@ async def call_openai_compatible_api(
     model_name: str,
     temperature: float = 0.7,
     max_tokens: int | None = None,
+    enable_thinking: bool | None = None,
 ) -> tuple[str, str]:
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
+    payload = build_chat_completion_payload(
+        messages=messages,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=False,
+        enable_thinking=enable_thinking,
+    )
 
     url = f"{base_url}/chat/completions"
     headers = {
@@ -369,7 +724,7 @@ async def call_openai_compatible_api(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=AI_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=build_httpx_timeout(enable_thinking, stream=False)) as client:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             body = response.json()
@@ -410,15 +765,16 @@ async def stream_openai_compatible_api(
     model_name: str,
     temperature: float = 0.7,
     max_tokens: int | None = None,
+    enable_thinking: bool | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": True,
-    }
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
+    payload = build_chat_completion_payload(
+        messages=messages,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+        enable_thinking=enable_thinking,
+    )
 
     url = f"{base_url}/chat/completions"
     headers = {
@@ -437,7 +793,7 @@ async def stream_openai_compatible_api(
     _THINK_TAG_MAX_LEN = max(len(THINK_OPEN_TAG), len(THINK_CLOSE_TAG))
 
     try:
-        async with httpx.AsyncClient(timeout=AI_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=build_httpx_timeout(enable_thinking, stream=True)) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as response:
                 response.raise_for_status()
 
@@ -569,8 +925,9 @@ async def test_ai_settings(
             detail="系统尚未配置默认 API Key，请提供自定义 API Key",
         )
 
-    base_url = normalize_base_url(payload.base_url) or OPENAI_BASE_URL
+    base_url = normalize_base_url(payload.base_url, require_public_https=bool(payload.base_url)) or OPENAI_BASE_URL
     model_name = normalize_user_model(payload.model) or OPENAI_MODEL
+    active_source = "custom" if input_api_key else "system"
 
     await call_openai_compatible_api(
         messages=[{"role": "user", "content": "Reply with OK only."}],
@@ -579,9 +936,8 @@ async def test_ai_settings(
         model_name=model_name,
         temperature=0,
         max_tokens=8,
+        enable_thinking=OPENAI_ENABLE_THINKING if active_source == "system" else None,
     )
-
-    active_source = "custom" if input_api_key else "system"
 
     return {
         "success": True,
@@ -597,7 +953,7 @@ async def stream_chat_with_ai(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    AI 助手流式聊天接口
+    Berry 流式聊天接口
     """
     cleaned_messages = [
         {"role": message.role, "content": message.content}
@@ -615,6 +971,9 @@ async def stream_chat_with_ai(
 
     base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
     active_source = get_active_source(payload.custom_config)
+    enable_thinking = payload.enable_thinking
+    if enable_thinking is None and active_source == "system":
+        enable_thinking = OPENAI_ENABLE_THINKING
 
     async def event_stream():
         yield ndjson_line({
@@ -625,11 +984,64 @@ async def stream_chat_with_ai(
         })
 
         try:
+            if payload.enable_web_search:
+                search_query = build_web_search_query(cleaned_messages, payload.context)
+                if search_query:
+                    yield ndjson_line({
+                        "type": "web_search_start",
+                        "query": search_query,
+                    })
+                    try:
+                        web_search_results = await perform_web_search(search_query, payload.web_search_freshness)
+                        if web_search_results:
+                            request_messages.insert(
+                                -len(cleaned_messages) if cleaned_messages else len(request_messages),
+                                {
+                                    "role": "system",
+                                    "content": build_web_search_context_message(search_query, web_search_results),
+                                },
+                            )
+                        else:
+                            request_messages.insert(
+                                -len(cleaned_messages) if cleaned_messages else len(request_messages),
+                                {
+                                    "role": "system",
+                                    "content": f"联网搜索已开启，但没有检索到与“{search_query}”直接相关的结果。请基于已有上下文谨慎回答。",
+                                },
+                            )
+
+                        yield ndjson_line({
+                            "type": "web_search_done",
+                            "query": search_query,
+                            "count": len(web_search_results),
+                            "sources": [
+                                {
+                                    "title": item.get("title", ""),
+                                    "url": item.get("url", ""),
+                                }
+                                for item in web_search_results[:8]
+                            ],
+                        })
+                    except HTTPException as exc:
+                        request_messages.insert(
+                            -len(cleaned_messages) if cleaned_messages else len(request_messages),
+                            {
+                                "role": "system",
+                                "content": f"联网搜索已开启，但搜索失败：{exc.detail}。请基于已有上下文回答，并说明未能完成联网检索。",
+                            },
+                        )
+                        yield ndjson_line({
+                            "type": "web_search_error",
+                            "query": search_query,
+                            "message": exc.detail,
+                        })
+
             async for event in stream_openai_compatible_api(
                 messages=request_messages,
                 base_url=base_url,
                 api_key=api_key,
                 model_name=active_model,
+                enable_thinking=enable_thinking,
             ):
                 if event.get("type") == "done":
                     event["model"] = active_model
@@ -648,7 +1060,7 @@ async def stream_chat_with_ai(
             logger.exception("Unexpected streaming AI error: %s", exc)
             yield ndjson_line({
                 "type": "error",
-                "message": "AI 助手暂时没能回复成功，请稍后再试。",
+                "message": "Berry 暂时没能回复成功，请稍后再试。",
                 "model": active_model,
                 "provider": "openai-compatible",
                 "active_source": active_source,
@@ -670,7 +1082,7 @@ async def chat_with_ai(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    AI 助手聊天接口
+    Berry 聊天接口
     """
     cleaned_messages = [
         {"role": message.role, "content": message.content}
@@ -680,18 +1092,30 @@ async def chat_with_ai(
 
     system_prompt = build_system_prompt(current_user, payload.context)
     context_message = build_context_message(payload.context)
+    web_search_message = await build_web_search_message_if_enabled(
+        payload.enable_web_search,
+        cleaned_messages,
+        payload.web_search_freshness,
+    )
 
     request_messages = [{"role": "system", "content": system_prompt}]
     if context_message:
         request_messages.append({"role": "system", "content": context_message})
+    if web_search_message:
+        request_messages.append({"role": "system", "content": web_search_message})
     request_messages.extend(cleaned_messages)
 
     base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
+    active_source = get_active_source(payload.custom_config)
+    enable_thinking = payload.enable_thinking
+    if enable_thinking is None and active_source == "system":
+        enable_thinking = OPENAI_ENABLE_THINKING
     answer, reasoning = await call_openai_compatible_api(
         messages=request_messages,
         base_url=base_url,
         api_key=api_key,
         model_name=active_model,
+        enable_thinking=enable_thinking,
     )
 
     return {
@@ -699,5 +1123,5 @@ async def chat_with_ai(
         "model": active_model,
         "provider": "openai-compatible",
         "reasoning": reasoning,
-        "active_source": get_active_source(current_user),
+        "active_source": active_source,
     }

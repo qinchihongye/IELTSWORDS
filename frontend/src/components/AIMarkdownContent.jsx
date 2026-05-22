@@ -83,6 +83,8 @@ MARKDOWN.renderer.rules.fence = (tokens, idx, options, env, self) => {
 const BLOCK_LABEL_PATTERN = /^(?:例句|示例|Example|Sentence|译文|翻译|释义|Translation|Meaning|用法|提示|说明|Note|Usage)[：:]/i;
 const EXAMPLE_START_PATTERN = /^(?:例句|示例|Example|Sentence)[：:]/i;
 const TABLE_ALIGNMENT_PATTERN = /^:?-{3,}:?$/;
+const SOURCE_SECTION_HEADING_PATTERN = /^(?:#{1,6}\s*)?(?:\*\*)?\s*(?:来源|参考来源|资料来源|Sources|References|Source)\s*(?:[：:])?\s*(?:\*\*)?\s*$/i;
+const SOURCE_SECTION_EVIDENCE_PATTERN = /(?:\[\d+\]|\]\(|https?:\/\/|^\s*\d+\.\s+)/m;
 
 const extractTableCells = (line = '') => (
   line
@@ -180,6 +182,33 @@ const normalizeExampleBlocks = (content = '') => {
 
 const prepareMarkdown = (content = '') => normalizeExampleBlocks(normalizeMarkdown(content));
 
+const splitSourceSection = (content = '') => {
+  const lines = String(content || '').split('\n');
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index].trim();
+    if (!SOURCE_SECTION_HEADING_PATTERN.test(line)) {
+      continue;
+    }
+
+    const sourceLines = lines.slice(index + 1);
+    const sourceMarkdown = sourceLines.join('\n').trim();
+    if (!sourceMarkdown || !SOURCE_SECTION_EVIDENCE_PATTERN.test(sourceMarkdown)) {
+      continue;
+    }
+
+    return {
+      body: lines.slice(0, index).join('\n').trim(),
+      sources: sourceMarkdown,
+    };
+  }
+
+  return {
+    body: content,
+    sources: '',
+  };
+};
+
 const toneVars = {
   default: {
     text: '#1f2937',
@@ -223,7 +252,7 @@ const AIMarkdownContent = ({ content = '', tone = 'default', compact = false }) 
     });
 
     // 2. Extract inline math ($ ... $)
-    processed = processed.replace(/\$([^\s\$](?:[^\$]*?[^\s\$])?)\$/g, (match, equation) => {
+    processed = processed.replace(/\$([^\s$](?:[^$]*?[^\s$])?)\$/g, (match, equation) => {
       const trimmed = equation.trim();
       // Skip if it looks like a currency range, e.g. "10-" or "10 "
       if (/^\d+[\s-]*$/.test(trimmed)) {
@@ -235,41 +264,49 @@ const AIMarkdownContent = ({ content = '', tone = 'default', compact = false }) 
 
     // 3. Prepare and render Markdown
     const prepared = prepareMarkdown(processed);
-    let renderedHtml = prepared ? MARKDOWN.render(prepared) : '';
+    const { body, sources } = splitSourceSection(prepared);
 
-    // 4. Restore block math with KaTeX rendering (and strip wrapping <p> if present)
-    renderedHtml = renderedHtml.replace(/<p>\s*@@@BLOCK_MATH_(\d+)@@@\s*<\/p>/g, (match, index) => {
-      const equation = blockMath[parseInt(index, 10)];
-      try {
-        return katex.renderToString(equation, { displayMode: true, throwOnError: false });
-      } catch (e) {
-        console.error('KaTeX block error:', e);
-        return `<div class="katex-error">$$ ${equation} $$</div>`;
-      }
-    });
+    const restoreMath = (renderedHtml) => {
+      let htmlWithMath = renderedHtml.replace(/<p>\s*@@@BLOCK_MATH_(\d+)@@@\s*<\/p>/g, (match, index) => {
+        const equation = blockMath[parseInt(index, 10)];
+        try {
+          return katex.renderToString(equation, { displayMode: true, throwOnError: false });
+        } catch (e) {
+          console.error('KaTeX block error:', e);
+          return `<div class="katex-error">$$ ${equation} $$</div>`;
+        }
+      });
 
-    renderedHtml = renderedHtml.replace(/@@@BLOCK_MATH_(\d+)@@@/g, (match, index) => {
-      const equation = blockMath[parseInt(index, 10)];
-      try {
-        return katex.renderToString(equation, { displayMode: true, throwOnError: false });
-      } catch (e) {
-        console.error('KaTeX block error:', e);
-        return `<div class="katex-error">$$ ${equation} $$</div>`;
-      }
-    });
+      htmlWithMath = htmlWithMath.replace(/@@@BLOCK_MATH_(\d+)@@@/g, (match, index) => {
+        const equation = blockMath[parseInt(index, 10)];
+        try {
+          return katex.renderToString(equation, { displayMode: true, throwOnError: false });
+        } catch (e) {
+          console.error('KaTeX block error:', e);
+          return `<div class="katex-error">$$ ${equation} $$</div>`;
+        }
+      });
 
-    // 5. Restore inline math with KaTeX rendering
-    renderedHtml = renderedHtml.replace(/@@@INLINE_MATH_(\d+)@@@/g, (match, index) => {
-      const equation = inlineMath[parseInt(index, 10)];
-      try {
-        return katex.renderToString(equation, { displayMode: false, throwOnError: false });
-      } catch (e) {
-        console.error('KaTeX inline error:', e);
-        return `<span class="katex-error">$ ${equation} $</span>`;
-      }
-    });
+      return htmlWithMath.replace(/@@@INLINE_MATH_(\d+)@@@/g, (match, index) => {
+        const equation = inlineMath[parseInt(index, 10)];
+        try {
+          return katex.renderToString(equation, { displayMode: false, throwOnError: false });
+        } catch (e) {
+          console.error('KaTeX inline error:', e);
+          return `<span class="katex-error">$ ${equation} $</span>`;
+        }
+      });
+    };
 
-    return renderedHtml;
+    const renderMarkdown = (markdownText) => restoreMath(markdownText ? MARKDOWN.render(markdownText) : '');
+    const bodyHtml = renderMarkdown(body);
+    const sourcesHtml = renderMarkdown(sources);
+
+    if (!sourcesHtml) {
+      return bodyHtml;
+    }
+
+    return `${bodyHtml}<details class="ai-markdown__sources"><summary><span>来源</span></summary><div class="ai-markdown__sources-body">${sourcesHtml}</div></details>`;
   }, [content]);
 
   if (!html) {

@@ -10,14 +10,29 @@ import csv
 import io
 from .. import schemas, crud
 from ..database import get_db
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, has_min_role
 from .. import models
 
 router = APIRouter()
 
+
+def can_access_word(db: Session, word: models.WordDetail, current_user: models.User) -> bool:
+    if has_min_role(current_user, "premium_user"):
+        return True
+
+    return crud.is_group_unlocked_for_user(db, word.chapterNo, word.groupId, current_user.id)
+
+
+def ensure_word_accessible(db: Session, word: models.WordDetail, current_user: models.User):
+    if not can_access_word(db, word, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该单词所属分组尚未解锁",
+        )
+
 @router.get("/leaderboard", response_model=List[schemas.LeaderboardEntry])
 async def get_leaderboard(
-    limit: int = Query(10, description="获取前N名"),
+    limit: int = Query(10, ge=1, le=100, description="获取前N名"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -26,6 +41,24 @@ async def get_leaderboard(
     """
     leaderboard = crud.get_global_leaderboard(db, current_user.id, limit)
     return leaderboard
+
+
+@router.get("/dashboard", response_model=schemas.ProgressDashboard)
+async def get_progress_dashboard(
+    leaderboard_limit: int = Query(30, ge=1, le=100, description="排行榜数量"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    获取数据看板聚合数据，减少首页重复请求。
+    """
+    return {
+        "stats": crud.get_progress_stats(db, current_user.id),
+        "streakInfo": crud.get_or_create_streak(db, current_user.id),
+        "leaderboard": crud.get_global_leaderboard(db, current_user.id, leaderboard_limit),
+        "chapterProgress": crud.get_chapter_progress_stats(db, current_user.id),
+    }
+
 
 @router.get("/stats", response_model=schemas.ProgressStats)
 async def get_progress_stats(
@@ -63,6 +96,13 @@ async def get_word_progress(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="该单词还没有学习记录"
         )
+    word = crud.get_word_by_id(db, word_id)
+    if not word:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="单词不存在"
+        )
+    ensure_word_accessible(db, word, current_user)
     return progress
 
 @router.post("/word/{word_id}", response_model=schemas.Progress)
@@ -82,10 +122,11 @@ async def update_word_progress(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="单词不存在"
         )
+    ensure_word_accessible(db, word, current_user)
 
     # 更新进度
     progress = crud.update_word_progress(
-        db, current_user.id, word_id, progress_update.status
+        db, current_user.id, word_id, progress_update.status, progress_update.quality
     )
     return progress
 
@@ -106,6 +147,11 @@ async def get_all_progress(
         )
 
     progress_list = crud.get_all_progress(db, current_user.id, status)
+    if not has_min_role(current_user, "premium_user"):
+        progress_list = [
+            item for item in progress_list
+            if (word := crud.get_word_by_id(db, item["word_id"])) and can_access_word(db, word, current_user)
+        ]
     return progress_list
 
 @router.get("/export")

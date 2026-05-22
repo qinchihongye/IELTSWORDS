@@ -1,9 +1,19 @@
 .ai-markdown {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
   white-space: normal;
   color: var(--ai-md-text);
-  font-size: 14px;
-  line-height: 1.8;
+  font-size: 13px;
+  line-height: 1.6;
   word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.ai-markdown * {
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .ai-markdown--compact {
@@ -26,6 +36,8 @@
 .ai-markdown blockquote,
 .ai-markdown hr {
   margin: 0 0 12px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .ai-markdown h1,
@@ -88,11 +100,12 @@
 }
 
 .ai-markdown pre {
-  overflow-x: auto;
+  overflow-x: hidden;
   padding: 12px 14px;
   background: var(--ai-md-panel-strong);
   border: 1px solid var(--ai-md-border);
   border-radius: 14px;
+  max-width: 100%;
 }
 
 .ai-markdown pre code {
@@ -103,7 +116,9 @@
   color: var(--ai-md-text);
   font-size: 13px;
   line-height: 1.7;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ai-markdown code {
@@ -122,7 +137,9 @@
 
 .ai-markdown__table-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
   max-width: 100%;
+  min-width: 0;
   margin: 14px 0;
 }
 
@@ -163,6 +180,78 @@
   border-top: 1px solid var(--ai-md-border);
 }
 
+.ai-markdown__sources {
+  margin: 14px 0 0;
+  border: 1px solid var(--ai-md-border);
+  border-radius: 12px;
+  background: var(--ai-md-panel);
+  overflow: hidden;
+}
+
+.ai-markdown__sources summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  color: #4f46e5;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.ai-markdown__sources summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-markdown__sources summary::after {
+  content: '>';
+  color: var(--ai-md-muted);
+  font-size: 12px;
+  font-weight: 800;
+  transition: transform 160ms ease;
+}
+
+.ai-markdown__sources[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.ai-markdown__sources-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--ai-md-border);
+  color: var(--ai-md-muted);
+  font-size: 12px;
+  max-height: min(220px, 36vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) rgba(226, 232, 240, 0.55);
+}
+
+.ai-markdown__sources-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-markdown__sources-body::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.55);
+  border-radius: 999px;
+}
+
+.ai-markdown__sources-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.48);
+  border-radius: 999px;
+}
+
+.ai-markdown__sources-body > :first-child {
+  margin-top: 10px !important;
+}
+
+.ai-markdown__sources-body > :last-child {
+  margin-bottom: 0 !important;
+}
+
 .ai-markdown strong {
   font-weight: 700;
 }
@@ -178,12 +267,14 @@
   overflow-y: hidden;
   padding: 8px 0;
   width: 100%;
+  max-width: 100%;
 }
 
 .ai-markdown .katex {
   font-size: 1.05em;
   line-height: normal;
   text-indent: 0;
+  max-width: 100%;
 }
 
 .ai-markdown .katex-error {

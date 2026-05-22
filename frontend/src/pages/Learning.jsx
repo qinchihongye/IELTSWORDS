@@ -127,8 +127,12 @@ const Learning = () => {
   useEffect(() => {
     if (routeMode && routeMode !== mode) {
       setMode(routeMode);
+    } else if (!activeMode) {
+      // If there's no active mode (e.g., user refreshed the page and context is lost),
+      // redirect them back to the home page to start over.
+      navigate('/home', { replace: true });
     }
-  }, [routeMode, mode, setMode]);
+  }, [routeMode, mode, setMode, activeMode, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -374,7 +378,7 @@ const Learning = () => {
 
     return {
       page: 'learning',
-      label: '单词学习助手',
+      label: 'Berry',
       description: currentWord
         ? `当前聚焦 ${currentWord.word}，可以直接问词义、辨析或记忆方法。`
         : '可以结合当前学习内容直接提问。',
@@ -388,6 +392,11 @@ const Learning = () => {
           key: 'learning-memory',
           label: '记忆技巧',
           prompt: '请结合我当前这个单词，给我一个简短、好记的记忆技巧。',
+        },
+        {
+          key: 'learning-example',
+          label: '例句生成',
+          prompt: '请基于我当前这个单词，生成 3 个自然、适合雅思学习的英文例句。每个例句后面都给出中文翻译，并简单说明这个单词在句子里的用法。',
         },
         {
           key: 'learning-compare',

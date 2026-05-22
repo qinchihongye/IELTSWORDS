@@ -529,7 +529,7 @@ const Quiz = () => {
     return () => {
       cancelled = true;
     };
-  }, [fetchActiveQuizSession]);
+  }, [fetchActiveQuizSession, setQuizSession]);
 
   const handleStartQuiz = async () => {
     setLoading(true);

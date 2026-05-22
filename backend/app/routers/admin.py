@@ -87,15 +87,10 @@ async def create_user(
             detail="邮箱已被注册"
         )
 
-    user = models.User(
-        username=payload.username,
-        email=payload.email,
-        hashed_password=auth.get_password_hash(payload.password),
-        role=payload.role,
-        is_active=True,
-        updated_at=datetime.now(timezone.utc)
-    )
-    db.add(user)
+    user = crud.create_user(db, payload)
+    user.role = payload.role
+    user.is_active = True
+    user.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
     return user

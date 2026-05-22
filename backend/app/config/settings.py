@@ -52,6 +52,19 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _env_optional_bool(name: str) -> bool | None:
+    value = _env_text(name)
+    if value is None:
+        return None
+
+    normalized = value.lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 def _env_list(name: str, default: list[str]) -> list[str]:
     value = _env_text(name)
     if value is None:
@@ -134,6 +147,7 @@ def resolve_database_url(url: str) -> str:
 SERVER_HOST = _env_text("SERVER_HOST") or _config_get(("server", "host"), "0.0.0.0")
 SERVER_PORT = _env_int("SERVER_PORT", int(_config_get(("server", "port"), 5432)))
 SERVER_RELOAD = _env_bool("SERVER_RELOAD", bool(_config_get(("server", "reload"), False)))
+SERVER_ACCESS_LOG = _env_bool("SERVER_ACCESS_LOG", True)
 
 # 数据库配置
 DATABASE_URL = resolve_database_url(
@@ -158,6 +172,10 @@ ACCESS_TOKEN_EXPIRE_HOURS = _env_int(
 
 # CORS配置
 CORS_ORIGINS = _env_list("CORS_ORIGINS", _config_get(("cors", "origins"), []))
+CORS_MAX_AGE = max(0, _env_int("CORS_MAX_AGE", 86400))
+
+# 数据看板缓存配置
+LEADERBOARD_CACHE_TTL_SECONDS = max(0, _env_int("LEADERBOARD_CACHE_TTL_SECONDS", 30))
 
 # AI 配置
 AI_CONFIG = LEGACY_CONFIG.get("ai", {}) if isinstance(LEGACY_CONFIG, dict) else {}
@@ -185,6 +203,17 @@ AI_REQUEST_TIMEOUT_SECONDS = _env_int(
     "AI_REQUEST_TIMEOUT_SECONDS",
     int(AI_CONFIG.get("timeout_seconds") or 30),
 )
+OPENAI_ENABLE_THINKING = _env_optional_bool("OPENAI_ENABLE_THINKING")
+if OPENAI_ENABLE_THINKING is None and "enable_thinking" in AI_CONFIG:
+    OPENAI_ENABLE_THINKING = bool(AI_CONFIG.get("enable_thinking"))
+
+# Berry 联网搜索配置。URL 和 Key 必须来自 .env，避免把服务地址或密钥写进代码。
+BOCHA_SEARCH_URL = (_env_text("BOCHA_SEARCH_URL") or "").rstrip("/")
+BOCHA_SEARCH_API_KEY = (_env_text("BOCHA_SEARCH_API_KEY") or "").strip()
+BOCHA_SEARCH_FRESHNESS = _env_text("BOCHA_SEARCH_FRESHNESS") or "noLimit"
+BOCHA_SEARCH_COUNT = max(1, min(_env_int("BOCHA_SEARCH_COUNT", 5), 10))
+BOCHA_SEARCH_SUMMARY = _env_bool("BOCHA_SEARCH_SUMMARY", True)
+BOCHA_SEARCH_TIMEOUT_SECONDS = max(3, min(_env_int("BOCHA_SEARCH_TIMEOUT_SECONDS", 15), 30))
 
 
 def print_config():
@@ -194,13 +223,19 @@ def print_config():
     logger.info("=" * 60)
     logger.info("运行环境: %s", ENVIRONMENT)
     logger.info("服务器地址: %s:%s", SERVER_HOST, SERVER_PORT)
+    logger.info("访问日志: %s", "开启" if SERVER_ACCESS_LOG else "关闭")
     logger.info("数据库路径: %s", DATABASE_URL)
     logger.info("JWT算法: %s", ALGORITHM)
     logger.info("Token有效期: %s小时", ACCESS_TOKEN_EXPIRE_HOURS)
     logger.info("CORS来源: %s", CORS_ORIGINS)
+    logger.info("CORS预检缓存: %s秒", CORS_MAX_AGE)
+    logger.info("排行榜缓存: %s秒", LEADERBOARD_CACHE_TTL_SECONDS)
     logger.info("AI模型: %s", OPENAI_MODEL)
     logger.info("可选AI模型: %s", OPENAI_AVAILABLE_MODELS)
+    if OPENAI_ENABLE_THINKING is not None:
+        logger.info("AI Thinking: %s", "开启" if OPENAI_ENABLE_THINKING else "关闭")
     logger.info("AI服务: %s", "已配置" if OPENAI_API_KEY else "未配置 OPENAI_API_KEY")
+    logger.info("Berry 联网搜索: %s", "已配置" if BOCHA_SEARCH_URL and BOCHA_SEARCH_API_KEY else "未配置")
     logger.info("=" * 60)
 
 

@@ -9,7 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from .config.settings import BASE_DIR, CORS_ORIGINS, SERVER_HOST, SERVER_PORT, SERVER_RELOAD, print_config
+from .config.settings import (
+    BASE_DIR,
+    CORS_MAX_AGE,
+    CORS_ORIGINS,
+    SERVER_ACCESS_LOG,
+    SERVER_HOST,
+    SERVER_PORT,
+    SERVER_RELOAD,
+    print_config,
+)
 from .database import engine, ensure_runtime_schema
 from .logging_config import get_logger
 
@@ -45,6 +54,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    max_age=CORS_MAX_AGE,
 )
 
 # 根路由
@@ -82,16 +92,17 @@ app.include_router(mistakes.router, prefix="/api/mistakes", tags=["错题本"])
 app.include_router(checkin.router, prefix="/api/checkin", tags=["打卡"])
 app.include_router(quiz.router, prefix="/api/quiz", tags=["测试"])
 app.include_router(admin.router, prefix="/api/admin", tags=["管理员"])
-app.include_router(ai.router, prefix="/api/ai", tags=["AI 助手"])
+app.include_router(ai.router, prefix="/api/ai", tags=["Berry"])
 app.include_router(custom_books.router, prefix="/api/custom-books", tags=["自定义词书"])
 
 if __name__ == "__main__":
     import uvicorn
     print_config()
-    print("\n🚀 启动FastAPI服务器...")
+    logger.info("启动FastAPI服务器...")
     uvicorn.run(
         "app.main:app",
         host=SERVER_HOST,
         port=SERVER_PORT,
-        reload=SERVER_RELOAD
+        reload=SERVER_RELOAD,
+        access_log=SERVER_ACCESS_LOG,
     )

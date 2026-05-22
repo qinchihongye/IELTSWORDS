@@ -1,15 +1,21 @@
 import asyncio
+import os
 import httpx
-from urllib.parse import urlparse
 
 async def test():
-    url = "https://api.siliconflow.cn/v1/chat/completions"
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("请先设置 OPENAI_API_KEY 环境变量")
+
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    url = f"{base_url}/chat/completions"
     headers = {
-        "Authorization": "Bearer sk-msoqbyysgzsrfupwkexkysxhgemuokwstbwjfxylgdmmiacl",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "deepseek-ai/DeepSeek-V4-Flash",
+        "model": model,
         "messages": [{"role": "user", "content": "Reply with OK only."}],
         "temperature": 0,
         "max_tokens": 8

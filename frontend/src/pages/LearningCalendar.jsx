@@ -38,24 +38,39 @@ const LearningCalendar = () => {
   return (
     <div className="learning-calendar-page">
       <style>{css}</style>
-      <div>
-        <Title level={2} style={{ margin: 0 }}>学习日历</Title>
-        <Text type="secondary">按日期查看打卡与学习节奏。</Text>
+      <div className="calendar-layout">
+        <div className="calendar-sidebar">
+          <div style={{ marginBottom: 16 }}>
+            <Title level={2} style={{ margin: 0 }}>学习日历</Title>
+            <Text type="secondary">按日期查看打卡与学习节奏。</Text>
+          </div>
+          <div className="calendar-stats">
+            <Card><Statistic prefix={<FireFilled style={{ color: '#ef4444' }} />} title="当前连续" value={streak?.current_streak || 0} suffix="天" /></Card>
+            <Card><Statistic prefix={<CalendarOutlined style={{ color: '#10b981' }} />} title="累计打卡" value={streak?.total_check_ins || 0} suffix="次" /></Card>
+            <Card><Statistic title="最长连续" value={streak?.longest_streak || 0} suffix="天" /></Card>
+          </div>
+        </div>
+        
+        <div className="calendar-main">
+          <StreakCalendar checkInHistory={history} />
+        </div>
       </div>
-      <div className="calendar-stats">
-        <Card><Statistic prefix={<FireFilled />} title="当前连续" value={streak?.current_streak || 0} suffix="天" /></Card>
-        <Card><Statistic prefix={<CalendarOutlined />} title="累计打卡" value={streak?.total_check_ins || 0} suffix="次" /></Card>
-        <Card><Statistic title="最长连续" value={streak?.longest_streak || 0} suffix="天" /></Card>
-      </div>
-      <StreakCalendar checkInHistory={history} />
     </div>
   );
 };
 
 const css = `
-.learning-calendar-page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
-.calendar-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 760px) { .calendar-stats { grid-template-columns: 1fr; } }
+.learning-calendar-page { max-width: 960px; margin: 0 auto; padding: 24px; }
+.calendar-layout { display: flex; gap: 40px; align-items: flex-start; }
+.calendar-sidebar { flex: 0 0 280px; display: flex; flex-direction: column; }
+.calendar-main { flex: 1; min-width: 0; }
+.calendar-stats { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 800px) {
+  .calendar-layout { flex-direction: column; gap: 24px; }
+  .calendar-sidebar { flex: none; width: 100%; }
+  .calendar-stats { flex-direction: row; flex-wrap: wrap; }
+  .calendar-stats > * { flex: 1; min-width: 120px; }
+}
 `;
 
 export default LearningCalendar;

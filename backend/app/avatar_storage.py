@@ -2,6 +2,8 @@
 用户头像存储工具
 """
 
+import io
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +20,8 @@ BUILTIN_AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 AVATAR_URL_PREFIX = "/uploads/avatars"
 BUILTIN_AVATAR_URL_PREFIX = "/builtin-avatars"
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
+MAX_AVATAR_PIXELS = 4_000_000
+MAX_AVATAR_DIMENSION = 512
 _ALLOWED_SUFFIXES_FOR_BUILTIN = {".png", ".jpg", ".jpeg", ".webp"}
 BUILTIN_AVATAR_KEYS = []
 if BUILTIN_AVATAR_UPLOAD_DIR.exists():
@@ -120,19 +124,7 @@ def delete_uploaded_avatar_file(avatar_value: str | None):
         file_path.unlink(missing_ok=True)
 
 
-async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
-    suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
-    if not suffix:
-        raw_suffix = Path(file.filename or "").suffix.lower()
-        suffix = ALLOWED_SUFFIXES.get(raw_suffix)
-
-    if not suffix:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="仅支持 PNG、JPG、WEBP 格式头像",
-        )
-
-    content = await file.read()
+def _read_limited_upload(content: bytes):
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,9 +137,76 @@ async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
             detail="头像大小不能超过 2MB",
         )
 
-    filename = f"user_{user_id}_{uuid4().hex}{suffix}"
+
+def _safe_avatar_stem(filename: str | None) -> str:
+    stem = Path(filename or "avatar").stem.strip() or "avatar"
+    stem = re.sub(r'[\\/:*?"<>|]+', "_", stem)
+    return stem[:80] or "avatar"
+
+
+def _build_avatar_png(content: bytes, circular: bool = False) -> bytes:
+    try:
+        from PIL import Image, ImageDraw, ImageOps
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="服务器暂未安装头像图片处理依赖 Pillow",
+        ) from exc
+
+    Image.MAX_IMAGE_PIXELS = MAX_AVATAR_PIXELS
+    try:
+        with Image.open(io.BytesIO(content)) as probe:
+            probe.verify()
+        with Image.open(io.BytesIO(content)) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+            width, height = img.size
+            if width <= 0 or height <= 0 or width * height > MAX_AVATAR_PIXELS:
+                raise ValueError("图片尺寸过大")
+
+            min_dim = min(width, height)
+            left = (width - min_dim) // 2
+            top = (height - min_dim) // 2
+            img = img.crop((left, top, left + min_dim, top + min_dim))
+            img.thumbnail((MAX_AVATAR_DIMENSION, MAX_AVATAR_DIMENSION), Image.Resampling.LANCZOS)
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+
+            if circular:
+                mask = Image.new("L", img.size, 0)
+                draw = ImageDraw.Draw(mask)
+                draw.ellipse((0, 0, img.size[0], img.size[1]), fill=255)
+                img.putalpha(mask)
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG", optimize=True)
+            return buffer.getvalue()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="上传文件不是有效的图片，或图片尺寸过大",
+        ) from exc
+
+
+async def save_uploaded_avatar(user_id: int, file: UploadFile) -> str:
+    suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
+    if not suffix:
+        raw_suffix = Path(file.filename or "").suffix.lower()
+        suffix = ALLOWED_SUFFIXES.get(raw_suffix)
+
+    if not suffix:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="仅支持 PNG、JPG、WEBP 格式头像",
+        )
+
+    content = await file.read(MAX_AVATAR_SIZE_BYTES + 1)
+    _read_limited_upload(content)
+    avatar_bytes = _build_avatar_png(content, circular=False)
+
+    filename = f"user_{user_id}_{uuid4().hex}.png"
     destination = AVATAR_UPLOAD_DIR / filename
-    destination.write_bytes(content)
+    destination.write_bytes(avatar_bytes)
     return get_avatar_upload_url(filename)
 
 
@@ -199,9 +258,6 @@ def is_hardcoded_builtin_avatar(filename: str) -> bool:
 
 
 async def save_builtin_avatar(file: UploadFile) -> str:
-    import io
-    from PIL import Image, ImageDraw
-
     suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
     if not suffix:
         raw_suffix = Path(file.filename or "").suffix.lower()
@@ -213,61 +269,16 @@ async def save_builtin_avatar(file: UploadFile) -> str:
             detail="仅支持 PNG、JPG、WEBP 格式头像",
         )
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="上传文件不能为空",
-        )
+    content = await file.read(MAX_AVATAR_SIZE_BYTES + 1)
+    _read_limited_upload(content)
+    img_bytes = _build_avatar_png(content, circular=True)
 
-    if len(content) > MAX_AVATAR_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="头像大小不能超过 2MB",
-        )
-
-    try:
-        img = Image.open(io.BytesIO(content))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"解析图片文件失败: {e}",
-        )
-
-    # 1. Ensure RGBA mode for transparency support
-    if img.mode != 'RGBA':
-        img = img.convert('RGBA')
-
-    # 2. Centered square crop at its original resolution (No dimension reduction)
-    width, height = img.size
-    min_dim = min(width, height)
-    left = (width - min_dim) // 2
-    top = (height - min_dim) // 2
-    right = left + min_dim
-    bottom = top + min_dim
-    cropped = img.crop((left, top, right, bottom))
-
-    # 3. Circular transparency mask
-    size = cropped.size
-    mask = Image.new('L', size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size[0], size[1]), fill=255)
-
-    # Apply transparency mask as alpha channel
-    circular = cropped.copy()
-    circular.putalpha(mask)
-
-    # 4. Generate save filename (Force PNG to support transparency)
-    original_stem = Path(file.filename or "avatar.png").stem
+    # Force PNG to support transparency and strip metadata.
+    original_stem = _safe_avatar_stem(file.filename)
     filename = f"{original_stem}.png"
     destination = BUILTIN_AVATAR_UPLOAD_DIR / filename
 
-    # 5. Save circular transparent image to disk (Original dimensions preserved)
     try:
-        buffer = io.BytesIO()
-        circular.save(buffer, format="PNG", optimize=True)
-        img_bytes = buffer.getvalue()
-        
         # Save to backend dynamic storage
         destination.write_bytes(img_bytes)
         

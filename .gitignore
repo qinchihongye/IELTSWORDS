@@ -50,9 +50,7 @@ yarn.lock
 frontend/dist/
 frontend/build/
 
-# Database (keep structure, ignore local databases)
-db/ielts_words.db
-db/ielts_words_app.db
+# Database (track main databases, ignore runtime artifacts and backups)
 db/*.db-journal
 db/*.db-wal
 db/*.db-shm

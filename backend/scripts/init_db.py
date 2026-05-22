@@ -41,6 +41,24 @@ def count_local_images() -> int:
     )
 
 
+def strip_embedded_images(conn: sqlite3.Connection) -> tuple[int, int]:
+    """清空数据库内嵌图片，仅保留 data/images 中的文件。"""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*), COALESCE(SUM(LENGTH(image_data)), 0)
+        FROM images
+        WHERE LENGTH(image_data) > 0
+        """
+    )
+    row_count, total_bytes = cursor.fetchone()
+
+    if row_count:
+        cursor.execute("UPDATE images SET image_data = zeroblob(0) WHERE LENGTH(image_data) > 0")
+
+    return int(row_count or 0), int(total_bytes or 0)
+
+
 def init_database():
     """初始化数据库"""
 
@@ -75,6 +93,12 @@ def init_database():
     cursor = conn.cursor()
 
     try:
+        stripped_rows, stripped_bytes = strip_embedded_images(conn)
+        if stripped_rows:
+            print(
+                f"🧹 已清空 {stripped_rows} 张库内图片，共释放约 {stripped_bytes / 1024 / 1024:.2f} MB 原始 BLOB 数据"
+            )
+
         # 3. 创建users表
         print("📝 创建users表...")
         cursor.execute("""
@@ -139,6 +163,9 @@ def init_database():
         # 5. 提交更改
         conn.commit()
         print("💾 数据库更改已提交")
+
+        print("🗜️ 收缩数据库文件...")
+        conn.execute("VACUUM")
 
         # 6. 验证表是否创建成功
         print("\n📊 验证数据库表...")

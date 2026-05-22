@@ -80,8 +80,10 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // 网络错误或 5xx 自动重试（最多 3 次，指数退避）
-    const shouldRetry = !error.response || error.response.status >= 500;
+    // 网络错误或 5xx 自动重试（最多 3 次，指数退避）。默认只重试幂等请求。
+    const requestMethod = (error.config?.method || 'get').toLowerCase();
+    const isIdempotentRequest = requestMethod === 'get' || requestMethod === 'head';
+    const shouldRetry = isIdempotentRequest && (!error.response || error.response.status >= 500);
     if (shouldRetry) {
       const config = error.config || {};
       config._retryCount = config._retryCount || 0;

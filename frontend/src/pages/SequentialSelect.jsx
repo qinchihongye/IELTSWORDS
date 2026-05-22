@@ -43,14 +43,18 @@ const LAST_POSITION_KEY = 'ieltswords_last_learning_position';
 const saveLastPosition = (chapterNo, groupId) => {
   try {
     localStorage.setItem(LAST_POSITION_KEY, JSON.stringify({ chapterNo, groupId }));
-  } catch {}
+  } catch {
+    // localStorage can be unavailable in private browsing modes.
+  }
 };
 
 const loadLastPosition = () => {
   try {
     const raw = localStorage.getItem(LAST_POSITION_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // Ignore invalid stored navigation state.
+  }
   return null;
 };
 

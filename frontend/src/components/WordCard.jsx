@@ -98,11 +98,11 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
 
 
   // 学习状态标记
-  const handleStatusChange = useCallback(async (e, status) => {
+  const handleStatusChange = useCallback(async (e, status, quality) => {
     if (e) e.stopPropagation();
     if (statusLoading || !onStatusChange) return;
     setStatusLoading(true);
-    await onStatusChange(status);
+    await onStatusChange(status, quality);
     setStatusLoading(false);
   }, [statusLoading, onStatusChange]);
 
@@ -113,9 +113,10 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
       if (e.code === 'Space') { e.preventDefault(); setShowAnswer(prev => !prev); }
       if (e.code === 'ArrowLeft' && onSwipeRight) onSwipeRight();
       if (e.code === 'ArrowRight' && onSwipeLeft) onSwipeLeft();
-      if (e.key === '1') handleStatusChange(null, 'unlearned');
-      if (e.key === '2') handleStatusChange(null, 'learning');
-      if (e.key === '3') handleStatusChange(null, 'mastered');
+      if (e.key === '1') handleStatusChange(null, 'learning', 0);
+      if (e.key === '2') handleStatusChange(null, 'learning', 3);
+      if (e.key === '3') handleStatusChange(null, 'learning', 4);
+      if (e.key === '4') handleStatusChange(null, 'mastered', 5);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -272,36 +273,36 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
               {/* Top Right: Status Dots */}
               <div style={{ position: 'absolute', top: 32, right: 32, display: 'flex', gap: 12, alignItems: 'center', zIndex: 20 }}>
                 {[
-                  { status: 'unlearned', color: '#f43f5e', title: '未掌握' },
-                  { status: 'learning', color: '#f59e0b', title: '有印象' },
-                  { status: 'mastered', color: '#10b981', title: '已掌握' },
-                ].map(btn => (
+                  { status: 'learning', quality: 0, color: '#f43f5e', title: '忘记' },
+                  { status: 'learning', quality: 3, color: '#f59e0b', title: '模糊' },
+                  { status: 'learning', quality: 4, color: '#10b981', title: '认识' },
+                  { status: 'mastered', quality: 5, color: '#3b82f6', title: '简单' },
+                ].map((btn, index) => (
                   <div
-                    key={btn.status}
-                    onMouseEnter={() => setHoveredStatus(btn.status)}
+                    key={btn.title}
+                    onMouseEnter={() => setHoveredStatus(btn.title)}
                     onMouseLeave={() => setHoveredStatus(null)}
-                    onClick={(e) => handleStatusChange(e, btn.status)}
+                    onClick={(e) => handleStatusChange(e, btn.status, btn.quality)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: hoveredStatus === btn.status ? '6px' : '0px',
+                      display: 'flex', alignItems: 'center', gap: hoveredStatus === btn.title ? '6px' : '0px',
                       height: 28, borderRadius: '14px',
-                      padding: hoveredStatus === btn.status ? '0 10px 0 6px' : '0 4px',
+                      padding: hoveredStatus === btn.title ? '0 10px 0 6px' : '0 4px',
                       cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      background: hoveredStatus === btn.status ? '#f9fafb' : 'transparent',
+                      background: hoveredStatus === btn.title ? '#f9fafb' : 'transparent',
                     }}
-                    title={`快捷键: ${btn.status === 'unlearned' ? '1' : btn.status === 'learning' ? '2' : '3'}`}
+                    title={`快捷键: ${index + 1}`}
                   >
                     <div style={{ 
-                      width: learningStatus === btn.status ? 10 : 8, 
-                      height: learningStatus === btn.status ? 10 : 8, 
+                      width: 8, 
+                      height: 8, 
                       borderRadius: '50%', 
-                      background: learningStatus === btn.status ? btn.color : `${btn.color}30`,
+                      background: `${btn.color}30`,
                       transition: 'all 0.3s',
-                      boxShadow: learningStatus === btn.status ? `0 0 8px ${btn.color}40` : 'none'
                     }} />
                     <span style={{ 
                       fontSize: '12px', fontWeight: 600, 
-                      maxWidth: hoveredStatus === btn.status ? '60px' : '0px',
-                      opacity: hoveredStatus === btn.status ? 1 : 0,
+                      maxWidth: hoveredStatus === btn.title ? '60px' : '0px',
+                      opacity: hoveredStatus === btn.title ? 1 : 0,
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       overflow: 'hidden', whiteSpace: 'nowrap',
                       color: btn.color
@@ -380,23 +381,27 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                   {/* Status Inline */}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#f9fafb', padding: '4px 8px', borderRadius: '999px' }} onClick={e => e.stopPropagation()}>
                     {[
-                      { status: 'unlearned', color: '#f43f5e', title: '未' },
-                      { status: 'learning', color: '#f59e0b', title: '印' },
-                      { status: 'mastered', color: '#10b981', title: '记' },
-                    ].map(btn => (
+                      { status: 'learning', quality: 0, color: '#f43f5e', title: '忘' },
+                      { status: 'learning', quality: 3, color: '#f59e0b', title: '糊' },
+                      { status: 'learning', quality: 4, color: '#10b981', title: '认' },
+                      { status: 'mastered', quality: 5, color: '#3b82f6', title: '简' },
+                    ].map((btn, index) => (
                       <div
-                        key={btn.status}
-                        onClick={(e) => handleStatusChange(e, btn.status)}
+                        key={btn.title}
+                        onClick={(e) => handleStatusChange(e, btn.status, btn.quality)}
                         style={{
                           width: 24, height: 24, borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer', transition: 'all 0.2s',
-                          background: learningStatus === btn.status ? btn.color : 'transparent',
-                          color: learningStatus === btn.status ? '#fff' : '#9ca3af',
+                          background: 'transparent',
+                          color: '#9ca3af',
                           fontSize: '11px', fontWeight: 600
                         }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = btn.color; e.currentTarget.style.color = '#fff'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}
+                        title={`快捷键: ${index + 1}`}
                       >
-                        {learningStatus === btn.status ? btn.title : <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db' }}/>}
+                        {btn.title}
                       </div>
                     ))}
                   </div>

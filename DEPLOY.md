@@ -69,6 +69,8 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `OPENAI_DISPLAY_MODEL_NAME`
+- `OPENAI_ENABLE_THINKING`
 - `AI_REQUEST_TIMEOUT_SECONDS`
 
 ## 3. 后端环境

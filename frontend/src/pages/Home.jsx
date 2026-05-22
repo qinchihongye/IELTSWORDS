@@ -67,21 +67,15 @@ const Home = () => {
 
   const {
     stats,
-    fetchStats,
     leaderboard,
-    fetchLeaderboard,
     streakInfo,
-    fetchStreakInfo,
     chapterProgress,
-    fetchChapterProgress,
+    fetchDashboard,
   } = useProgress();
 
   useEffect(() => {
-    void fetchStats();
-    void fetchLeaderboard(30);
-    void fetchStreakInfo();
-    void fetchChapterProgress();
-  }, [fetchStats, fetchLeaderboard, fetchStreakInfo, fetchChapterProgress]);
+    void fetchDashboard(30);
+  }, [fetchDashboard]);
 
   if (!stats) {
     return (
@@ -170,7 +164,7 @@ const Home = () => {
       <motion.div variants={itemVariants} className="bento-header">
         <div>
           <Title level={2} style={{ margin: 0, color: '#0f172a', fontWeight: 700, letterSpacing: '-0.5px' }}>
-            智能数据看板
+            我的进度
           </Title>
           <Text style={{ color: '#64748b', fontSize: '15px' }}>
             欢迎回来, {user?.username}。一览你的学习进度与全球排名。
@@ -210,7 +204,7 @@ const Home = () => {
                 <div>
                   <Text className="db-card-title">学习概览</Text>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
-                    合并展示核心指标与掌握分布
+                    你的词汇掌握情况与学习趋势
                   </div>
                 </div>
                 <div className="db-icon-circle bg-emerald-50 text-emerald-500">
@@ -264,7 +258,7 @@ const Home = () => {
                   全球积分榜
                 </Text>
                 <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
-                  查看全站学习积分排名
+                  查看全球学习积分排名
                 </div>
               </div>
               <CrownFilled style={{ color: '#f59e0b', fontSize: 20 }} />

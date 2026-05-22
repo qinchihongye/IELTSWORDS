@@ -19,11 +19,15 @@ const DEFAULT_SHORTCUTS = [
 
 const DEFAULT_CONTEXT = {
   page: 'general',
-  label: 'AI 助手',
+  label: 'Berry',
   description: '可以结合你当前页面的内容，随时提问。',
   shortcuts: DEFAULT_SHORTCUTS,
   payload: {},
 };
+
+const DEFAULT_WEB_SEARCH_FRESHNESS = 'noLimit';
+const WEB_SEARCH_FRESHNESS_VALUES = ['noLimit', 'oneDay', 'oneWeek', 'oneMonth', 'oneYear'];
+const CONTEXT_HISTORY_PAGE_WHITELIST = new Set(['learning', 'quiz', 'mistake-book']);
 
 const DEFAULT_AI_SETTINGS = {
   customBaseUrl: '',
@@ -39,6 +43,9 @@ const DEFAULT_AI_SETTINGS = {
   activeModelDisplayName: '',
   availableModels: [],
   selectedModel: '',
+  thinkingEnabled: false,
+  webSearchEnabled: false,
+  webSearchFreshness: DEFAULT_WEB_SEARCH_FRESHNESS,
 };
 
 const createMessageId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -51,9 +58,47 @@ const createMessage = (role, content, extra = {}) => ({
   ...extra,
 });
 
-const LOCAL_SETTINGS_KEY = 'ieltswords_custom_ai_settings';
+const buildContextScopeKey = (context) => {
+  const normalizedContext = context || DEFAULT_CONTEXT;
+  const page = normalizedContext.page || 'general';
+  const payload = normalizedContext.payload || {};
+  const subject = (
+    payload.word
+    || payload.selectedWord
+    || payload.questionText
+    || payload.groupLabel
+    || payload.chapterTitle
+    || payload.label
+    || ''
+  );
 
-const getChatHistoryKey = (userId) => `ieltswords_ai_chat_history_${userId || 'guest'}`;
+  return `${page}:${String(subject || '').trim()}`;
+};
+
+const shouldLimitHistoryToContext = (context) => {
+  const normalizedContext = context || DEFAULT_CONTEXT;
+  const page = normalizedContext.page || 'general';
+  const payload = normalizedContext.payload || {};
+
+  if (!CONTEXT_HISTORY_PAGE_WHITELIST.has(page)) {
+    return false;
+  }
+
+  return Boolean(
+    payload.word
+    || payload.selectedWord
+    || payload.questionText
+    || payload.groupLabel
+  );
+};
+
+const LOCAL_SETTINGS_KEY = 'ieltswords_custom_ai_settings';
+const THINKING_ENABLED_KEY = 'ieltswords_ai_thinking_enabled';
+const WEB_SEARCH_ENABLED_KEY = 'ieltswords_ai_web_search_enabled';
+const WEB_SEARCH_FRESHNESS_KEY = 'ieltswords_ai_web_search_freshness';
+
+const getChatHistoryBundleKey = (userId) => `ieltswords_ai_chat_history_bundle_${userId || 'guest'}`;
+const getLegacyChatHistoryKey = (userId) => `ieltswords_ai_chat_history_${userId || 'guest'}`;
 
 const getLocalAISettings = () => {
   try {
@@ -64,31 +109,271 @@ const getLocalAISettings = () => {
   }
 };
 
-const loadMessagesFromStorage = (userId, defaultContext) => {
-  if (!userId) return [buildGreeting(defaultContext)];
+const getLocalThinkingEnabled = () => {
   try {
-    const key = getChatHistoryKey(userId);
-    const data = localStorage.getItem(key);
-    if (data) {
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+    const raw = localStorage.getItem(THINKING_ENABLED_KEY);
+    if (raw === null) {
+      return null;
+    }
+    if (raw === 'true') {
+      return true;
+    }
+    if (raw === 'false') {
+      return false;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const setLocalThinkingEnabled = (value) => {
+  try {
+    if (value === null || value === undefined) {
+      localStorage.removeItem(THINKING_ENABLED_KEY);
+      return;
+    }
+
+    localStorage.setItem(THINKING_ENABLED_KEY, value ? 'true' : 'false');
+  } catch {
+    // ignore localStorage failures
+  }
+};
+
+const getLocalWebSearchEnabled = () => {
+  try {
+    return localStorage.getItem(WEB_SEARCH_ENABLED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const setLocalWebSearchEnabled = (value) => {
+  try {
+    localStorage.setItem(WEB_SEARCH_ENABLED_KEY, value ? 'true' : 'false');
+  } catch {
+    // ignore localStorage failures
+  }
+};
+
+const normalizeWebSearchFreshness = (value) => (
+  WEB_SEARCH_FRESHNESS_VALUES.includes(value) ? value : DEFAULT_WEB_SEARCH_FRESHNESS
+);
+
+const getLocalWebSearchFreshness = () => {
+  try {
+    return normalizeWebSearchFreshness(localStorage.getItem(WEB_SEARCH_FRESHNESS_KEY));
+  } catch {
+    return DEFAULT_WEB_SEARCH_FRESHNESS;
+  }
+};
+
+const setLocalWebSearchFreshness = (value) => {
+  try {
+    localStorage.setItem(WEB_SEARCH_FRESHNESS_KEY, normalizeWebSearchFreshness(value));
+  } catch {
+    // ignore localStorage failures
+  }
+};
+
+const createChatSessionId = () => `chat_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+const truncateText = (text, maxLength) => {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) {
+    return '';
+  }
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength)}…`;
+};
+
+const hasUserMessage = (messages) => (
+  Array.isArray(messages)
+  && messages.some((message) => message?.role === 'user' && String(message?.content || '').trim())
+);
+
+const buildConversationTitle = (messages) => {
+  const firstUserMessage = Array.isArray(messages)
+    ? messages.find((message) => message?.role === 'user' && String(message?.content || '').trim())
+    : null;
+  return firstUserMessage ? truncateText(firstUserMessage.content, 18) : '新聊天';
+};
+
+const buildConversationPreview = (messages) => {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return '';
+  }
+
+  const lastContentMessage = [...messages].reverse().find((message) => String(message?.content || '').trim());
+  return lastContentMessage ? truncateText(lastContentMessage.content, 42) : '';
+};
+
+const normalizeChatMessage = (message) => {
+  if (!message || typeof message !== 'object') {
+    return null;
+  }
+
+  const role = ['user', 'assistant', 'system'].includes(message.role) ? message.role : 'assistant';
+  const content = String(message.content || '');
+  const isGreeting = message.kind === 'greeting';
+  const isCompletedAssistant = (
+    role === 'assistant'
+    && content.trim()
+    && !message.streaming
+    && !message.error
+    && !isGreeting
+  );
+
+  return {
+    ...message,
+    role,
+    content,
+    contextPage: typeof message.contextPage === 'string' && message.contextPage.trim()
+      ? message.contextPage.trim()
+      : 'general',
+    contextScopeKey: typeof message.contextScopeKey === 'string'
+      ? message.contextScopeKey
+      : '',
+    sendable: isCompletedAssistant ? true : message.sendable,
+  };
+};
+
+const normalizeChatSession = (session, defaultContext) => {
+  const context = normalizeContext(session?.context || defaultContext);
+  const normalizedMessages = Array.isArray(session?.messages) && session.messages.length > 0
+    ? session.messages.map(normalizeChatMessage).filter(Boolean)
+    : [];
+  const messages = normalizedMessages.length > 0 ? normalizedMessages : [buildGreeting(context)];
+  const createdAt = Number.isFinite(Number(session?.createdAt))
+    ? Number(session.createdAt)
+    : Date.now();
+  const updatedAt = Number.isFinite(Number(session?.updatedAt))
+    ? Number(session.updatedAt)
+    : createdAt;
+
+  return {
+    id: session?.id || createChatSessionId(),
+    title: session?.title || buildConversationTitle(messages),
+    titleEdited: Boolean(session?.titleEdited),
+    preview: session?.preview || buildConversationPreview(messages),
+    favorite: Boolean(session?.favorite || session?.isFavorite),
+    createdAt,
+    updatedAt,
+    context,
+    messages,
+  };
+};
+
+const createDefaultChatHistory = (defaultContext) => {
+  const session = normalizeChatSession({
+    id: createChatSessionId(),
+    context: defaultContext,
+    messages: [buildGreeting(defaultContext)],
+  }, defaultContext);
+
+  return {
+    activeSessionId: session.id,
+    sessions: [session],
+  };
+};
+
+const loadChatHistoryBundle = (userId, defaultContext) => {
+  if (!userId) {
+    return createDefaultChatHistory(defaultContext);
+  }
+
+  try {
+    const bundleKey = getChatHistoryBundleKey(userId);
+    const bundleData = localStorage.getItem(bundleKey);
+    if (bundleData) {
+      const parsed = JSON.parse(bundleData);
+      const sessions = Array.isArray(parsed?.sessions)
+        ? parsed.sessions.map((session) => normalizeChatSession(session, defaultContext))
+        : [];
+
+      if (sessions.length > 0) {
+        const activeSessionId = sessions.some((session) => session.id === parsed?.activeSessionId)
+          ? parsed.activeSessionId
+          : sessions[0].id;
+
+        return {
+          activeSessionId,
+          sessions,
+        };
       }
     }
   } catch (e) {
     console.error('Failed to load chat history:', e);
   }
-  return [buildGreeting(defaultContext)];
-};
 
-const saveMessagesToStorage = (userId, messages) => {
-  if (!userId || !messages || messages.length === 0) return;
   try {
-    const key = getChatHistoryKey(userId);
-    localStorage.setItem(key, JSON.stringify(messages));
+    const legacyKey = getLegacyChatHistoryKey(userId);
+    const legacyData = localStorage.getItem(legacyKey);
+    if (legacyData) {
+      const parsed = JSON.parse(legacyData);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const session = normalizeChatSession({
+          id: createChatSessionId(),
+          context: defaultContext,
+          messages: parsed,
+        }, defaultContext);
+        const bundle = {
+          activeSessionId: session.id,
+          sessions: [session],
+        };
+        localStorage.setItem(getChatHistoryBundleKey(userId), JSON.stringify(bundle));
+        return bundle;
+      }
+    }
   } catch (e) {
     console.error('Failed to save chat history:', e);
   }
+
+  return createDefaultChatHistory(defaultContext);
+};
+
+const persistChatHistoryBundle = (userId, bundle) => {
+  if (!userId) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(getChatHistoryBundleKey(userId), JSON.stringify(bundle));
+  } catch (e) {
+    console.error('Failed to save chat history:', e);
+  }
+};
+
+const upsertChatSession = (sessions, sessionId, { messages, context }) => {
+  const now = Date.now();
+  const nextSessions = Array.isArray(sessions) ? [...sessions] : [];
+  const sessionIndex = nextSessions.findIndex((session) => session.id === sessionId);
+
+  if (sessionIndex < 0) {
+    const session = normalizeChatSession({
+      id: sessionId,
+      context,
+      messages,
+      createdAt: now,
+      updatedAt: now,
+    }, context);
+    return [session, ...nextSessions];
+  }
+
+  const current = nextSessions[sessionIndex];
+  nextSessions[sessionIndex] = {
+    ...current,
+    context: normalizeContext(context || current.context),
+    messages,
+    title: current.titleEdited ? current.title : buildConversationTitle(messages),
+    preview: buildConversationPreview(messages),
+    updatedAt: now,
+  };
+
+  return nextSessions;
 };
 
 const normalizeContext = (context) => ({
@@ -106,9 +391,17 @@ const normalizeModelList = (models) => {
 const normalizeAISettings = (data, previousSelectedModel = '') => {
   const localSettings = getLocalAISettings() || {};
   const availableModels = normalizeModelList(data?.available_models);
+  const systemThinkingEnabled = typeof data?.thinking_enabled === 'boolean'
+    ? data.thinking_enabled
+    : null;
+  const storedThinkingEnabled = getLocalThinkingEnabled();
+  const storedWebSearchEnabled = getLocalWebSearchEnabled();
+  const storedWebSearchFreshness = getLocalWebSearchFreshness();
   
   const customModel = localSettings.model || '';
   const hasApiKey = Boolean(localSettings.apiKey);
+  const systemModel = data?.active_model || '';
+  const systemModelDisplayName = data?.active_model_display_name || '';
   const activeModel = customModel || availableModels[0] || '';
   const defaultModel = availableModels[0] || activeModel;
   
@@ -129,9 +422,17 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
     canUseAI: hasApiKey || Boolean(data?.system_configured),
     activeSource: hasApiKey ? 'custom' : 'system',
     activeModel,
-    activeModelDisplayName: localSettings.modelDisplayName || activeModel,
+    activeModelDisplayName: hasApiKey
+      ? (localSettings.modelDisplayName || activeModel)
+      : (systemModelDisplayName || activeModel),
     availableModels,
     selectedModel,
+    systemModel,
+    systemModelDisplayName,
+    thinkingEnabled: storedThinkingEnabled ?? systemThinkingEnabled ?? false,
+    systemThinkingEnabled,
+    webSearchEnabled: storedWebSearchEnabled,
+    webSearchFreshness: storedWebSearchFreshness || normalizeWebSearchFreshness(data?.web_search_freshness),
   };
 };
 
@@ -157,14 +458,14 @@ const parseErrorResponse = async (response) => {
   try {
     if (contentType.includes('application/json')) {
       const data = await response.json();
-      return data?.detail || data?.message || 'AI 助手暂时没能回复成功，请稍后再试。';
+      return data?.detail || data?.message || 'Berry 暂时没能回复成功，请稍后再试。';
     }
 
     const text = await response.text();
-    return text || 'AI 助手暂时没能回复成功，请稍后再试。';
+    return text || 'Berry 暂时没能回复成功，请稍后再试。';
   } catch (error) {
     console.error('解析流式响应错误信息失败:', error);
-    return 'AI 助手暂时没能回复成功，请稍后再试。';
+    return 'Berry 暂时没能回复成功，请稍后再试。';
   }
 };
 
@@ -233,7 +534,7 @@ const buildGreeting = (context) => {
     });
   }
 
-  return createMessage('assistant', '你好，我是你的 IELTS 学习助手。你可以直接问我单词、题目、复习方法，或者让我结合当前页面给建议。', {
+  return createMessage('assistant', '你好，我是 Berry。你可以直接问我单词、题目、复习方法，或者让我结合当前页面给建议。', {
     sendable: false,
     kind: 'greeting',
   });
@@ -241,42 +542,81 @@ const buildGreeting = (context) => {
 
 export const AIChatProvider = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
+  const userKey = user?.id || user?.username;
+  const [initialChatData] = useState(() => {
+    const history = loadChatHistoryBundle(user?.id || user?.username, DEFAULT_CONTEXT);
+    const activeSession = history.sessions.find((session) => session.id === history.activeSessionId);
+    return {
+      history,
+      messages: activeSession?.messages || [buildGreeting(DEFAULT_CONTEXT)],
+    };
+  });
   const [isOpen, setIsOpen] = useState(false);
   const [chatContext, setChatContextState] = useState(DEFAULT_CONTEXT);
-  const [messages, setMessages] = useState(() => loadMessagesFromStorage(user?.id || user?.username, DEFAULT_CONTEXT));
+  const [messages, setMessages] = useState(initialChatData.messages);
+  const [chatHistory, setChatHistory] = useState(initialChatData.history);
   const [isSending, setIsSending] = useState(false);
   const [aiSettings, setAISettings] = useState(DEFAULT_AI_SETTINGS);
   const [isSettingsLoading, setIsSettingsLoading] = useState(false);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const messagesRef = useRef(messages);
+  const chatContextRef = useRef(chatContext);
+  const chatHistoryRef = useRef(chatHistory);
   const aiSettingsRef = useRef(aiSettings);
+  const activeStreamAbortRef = useRef(null);
   const settingsLoadedRef = useRef(false);
+  const loadedUserKeyRef = useRef(userKey || null);
+  const chatSessions = chatHistory.sessions;
+  const activeChatSessionId = chatHistory.activeSessionId || null;
 
   useEffect(() => {
     messagesRef.current = messages;
-    if (isAuthenticated && (user?.id || user?.username)) {
-      saveMessagesToStorage(user?.id || user?.username, messages);
+    if (isAuthenticated && userKey && loadedUserKeyRef.current === userKey) {
+      setChatHistory((prev) => {
+        const activeSessionId = prev.activeSessionId || createChatSessionId();
+        const next = {
+          activeSessionId,
+          sessions: upsertChatSession(prev.sessions, activeSessionId, {
+            messages,
+            context: chatContext,
+          }),
+        };
+        chatHistoryRef.current = next;
+        persistChatHistoryBundle(userKey, next);
+        return next;
+      });
     }
-  }, [messages, isAuthenticated, user]);
+  }, [messages, isAuthenticated, userKey, chatContext]);
+
+  useEffect(() => {
+    chatContextRef.current = chatContext;
+  }, [chatContext]);
+
+  useEffect(() => {
+    chatHistoryRef.current = chatHistory;
+  }, [chatHistory]);
 
   useEffect(() => {
     aiSettingsRef.current = aiSettings;
   }, [aiSettings]);
 
   useEffect(() => {
-    if (isAuthenticated && (user?.id || user?.username)) {
-      setMessages((prev) => {
-        const loaded = loadMessagesFromStorage(user?.id || user?.username, chatContext);
-        // If the loaded messages are more robust than just one greeting, use them.
-        if (loaded.length > 1 || prev.length <= 1) {
-          return loaded;
-        }
-        return prev;
-      });
+    const currentContext = chatContextRef.current;
+    if (isAuthenticated && userKey) {
+      const nextHistory = loadChatHistoryBundle(userKey, currentContext);
+      const activeSession = nextHistory.sessions.find((session) => session.id === nextHistory.activeSessionId);
+      loadedUserKeyRef.current = userKey;
+      chatHistoryRef.current = nextHistory;
+      setChatHistory(nextHistory);
+      setMessages(activeSession?.messages || [buildGreeting(currentContext)]);
     } else {
-      setMessages([buildGreeting(chatContext)]);
+      loadedUserKeyRef.current = null;
+      const nextHistory = createDefaultChatHistory(currentContext);
+      chatHistoryRef.current = nextHistory;
+      setChatHistory(nextHistory);
+      setMessages([buildGreeting(currentContext)]);
     }
-  }, [isAuthenticated, user?.id, user?.username]);
+  }, [isAuthenticated, userKey]);
 
   const fetchAISettings = useCallback(async (force = false) => {
     if (!isAuthenticated) {
@@ -327,20 +667,194 @@ export const AIChatProvider = ({ children }) => {
     ));
   }, []);
 
-  const resetConversation = useCallback((nextContext) => {
+  const loadChatSession = useCallback((sessionId) => {
+    if (!sessionId) {
+      return null;
+    }
+
+    const currentHistory = chatHistoryRef.current;
+    const session = currentHistory.sessions.find((item) => item.id === sessionId);
+    if (!session) {
+      return null;
+    }
+
+    const finalContext = normalizeContext(session.context || chatContext);
+    setChatContextState(finalContext);
+
+    const nextMessages = Array.isArray(session.messages) && session.messages.length > 0
+      ? session.messages
+      : [buildGreeting(finalContext)];
+    const nextHistory = {
+      ...currentHistory,
+      activeSessionId: session.id,
+    };
+
+    chatHistoryRef.current = nextHistory;
+    setChatHistory(nextHistory);
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+
+    if (isAuthenticated && userKey) {
+      persistChatHistoryBundle(userKey, nextHistory);
+    }
+
+    return session;
+  }, [chatContext, isAuthenticated, userKey]);
+
+  const startNewConversation = useCallback((nextContext) => {
     const finalContext = normalizeContext(nextContext || chatContext);
     if (nextContext) {
       setChatContextState(finalContext);
     }
 
     const nextMessages = [buildGreeting(finalContext)];
+    const currentHistory = chatHistoryRef.current;
+    const canReuseCurrentSession = Boolean(currentHistory.activeSessionId) && !hasUserMessage(messagesRef.current);
+
+    let nextHistory;
+    if (canReuseCurrentSession) {
+      nextHistory = {
+        activeSessionId: currentHistory.activeSessionId,
+        sessions: upsertChatSession(currentHistory.sessions, currentHistory.activeSessionId, {
+          messages: nextMessages,
+          context: finalContext,
+        }),
+      };
+    } else {
+      const freshSession = normalizeChatSession({
+        id: createChatSessionId(),
+        context: finalContext,
+        messages: nextMessages,
+      }, finalContext);
+      nextHistory = {
+        activeSessionId: freshSession.id,
+        sessions: [freshSession, ...(currentHistory.sessions || [])],
+      };
+    }
+
+    chatHistoryRef.current = nextHistory;
+    setChatHistory(nextHistory);
     messagesRef.current = nextMessages;
     setMessages(nextMessages);
-    
-    if (isAuthenticated && (user?.id || user?.username)) {
-      saveMessagesToStorage(user?.id || user?.username, nextMessages);
+
+    if (isAuthenticated && userKey) {
+      persistChatHistoryBundle(userKey, nextHistory);
     }
-  }, [chatContext, isAuthenticated, user]);
+
+    return nextMessages;
+  }, [chatContext, isAuthenticated, userKey]);
+
+  const updateChatSessionTitle = useCallback((sessionId, title) => {
+    const normalizedTitle = truncateText(title, 60) || '新聊天';
+    const currentHistory = chatHistoryRef.current;
+    const nextHistory = {
+      ...currentHistory,
+      sessions: currentHistory.sessions.map((session) => (
+        session.id === sessionId
+          ? {
+              ...session,
+              title: normalizedTitle,
+              titleEdited: true,
+            }
+          : session
+      )),
+    };
+
+    chatHistoryRef.current = nextHistory;
+    setChatHistory(nextHistory);
+
+    if (isAuthenticated && userKey) {
+      persistChatHistoryBundle(userKey, nextHistory);
+    }
+
+    return nextHistory.sessions.find((session) => session.id === sessionId) || null;
+  }, [isAuthenticated, userKey]);
+
+  const toggleChatSessionFavorite = useCallback((sessionId, nextFavorite) => {
+    const currentHistory = chatHistoryRef.current;
+    let updatedSession = null;
+    const nextHistory = {
+      ...currentHistory,
+      sessions: currentHistory.sessions.map((session) => {
+        if (session.id !== sessionId) {
+          return session;
+        }
+
+        updatedSession = {
+          ...session,
+          favorite: typeof nextFavorite === 'boolean' ? nextFavorite : !session.favorite,
+        };
+        return updatedSession;
+      }),
+    };
+
+    chatHistoryRef.current = nextHistory;
+    setChatHistory(nextHistory);
+
+    if (isAuthenticated && userKey) {
+      persistChatHistoryBundle(userKey, nextHistory);
+    }
+
+    return updatedSession;
+  }, [isAuthenticated, userKey]);
+
+  const deleteChatSession = useCallback((sessionId) => {
+    const currentHistory = chatHistoryRef.current;
+    const remainingSessions = currentHistory.sessions.filter((session) => session.id !== sessionId);
+    if (remainingSessions.length === currentHistory.sessions.length) {
+      return false;
+    }
+
+    let nextSessions = remainingSessions;
+    let nextActiveSessionId = currentHistory.activeSessionId;
+    let nextContext = chatContextRef.current;
+    let nextMessages = messagesRef.current;
+
+    if (currentHistory.activeSessionId === sessionId) {
+      if (nextSessions.length > 0) {
+        const nextActiveSession = nextSessions[0];
+        nextActiveSessionId = nextActiveSession.id;
+        nextContext = normalizeContext(nextActiveSession.context || chatContextRef.current);
+        nextMessages = Array.isArray(nextActiveSession.messages) && nextActiveSession.messages.length > 0
+          ? nextActiveSession.messages
+          : [buildGreeting(nextContext)];
+      } else {
+        const fallbackSession = normalizeChatSession({
+          id: createChatSessionId(),
+          context: chatContextRef.current,
+          messages: [buildGreeting(chatContextRef.current)],
+        }, chatContextRef.current);
+        nextSessions = [fallbackSession];
+        nextActiveSessionId = fallbackSession.id;
+        nextContext = fallbackSession.context;
+        nextMessages = fallbackSession.messages;
+      }
+    }
+
+    const nextHistory = {
+      activeSessionId: nextActiveSessionId,
+      sessions: nextSessions,
+    };
+
+    chatHistoryRef.current = nextHistory;
+    setChatHistory(nextHistory);
+
+    if (currentHistory.activeSessionId === sessionId) {
+      setChatContextState(nextContext);
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+    }
+
+    if (isAuthenticated && userKey) {
+      persistChatHistoryBundle(userKey, nextHistory);
+    }
+
+    return true;
+  }, [isAuthenticated, userKey]);
+
+  const resetConversation = useCallback((nextContext) => {
+    return startNewConversation(nextContext);
+  }, [startNewConversation]);
 
   const openDrawer = useCallback(() => {
     setIsOpen(true);
@@ -391,6 +905,7 @@ export const AIChatProvider = ({ children }) => {
     setIsSettingsSaving(true);
     try {
       localStorage.removeItem(LOCAL_SETTINGS_KEY);
+      setLocalThinkingEnabled(null);
       return await fetchAISettings(true);
     } catch (error) {
       console.error('恢复 AI 默认配置失败:', error);
@@ -410,6 +925,45 @@ export const AIChatProvider = ({ children }) => {
       const next = {
         ...prev,
         selectedModel: normalizedModel,
+      };
+      aiSettingsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setThinkingEnabled = useCallback((enabled) => {
+    const nextValue = Boolean(enabled);
+    setLocalThinkingEnabled(nextValue);
+    setAISettings((prev) => {
+      const next = {
+        ...prev,
+        thinkingEnabled: nextValue,
+      };
+      aiSettingsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setWebSearchEnabled = useCallback((enabled) => {
+    const nextValue = Boolean(enabled);
+    setLocalWebSearchEnabled(nextValue);
+    setAISettings((prev) => {
+      const next = {
+        ...prev,
+        webSearchEnabled: nextValue,
+      };
+      aiSettingsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setWebSearchFreshness = useCallback((freshness) => {
+    const nextValue = normalizeWebSearchFreshness(freshness);
+    setLocalWebSearchFreshness(nextValue);
+    setAISettings((prev) => {
+      const next = {
+        ...prev,
+        webSearchFreshness: nextValue,
       };
       aiSettingsRef.current = next;
       return next;
@@ -468,7 +1022,12 @@ export const AIChatProvider = ({ children }) => {
       setIsOpen(true);
     }
 
-    const userMessage = createMessage('user', trimmed);
+    const activeContextScopeKey = buildContextScopeKey(activeContext);
+    const contextMessageMeta = {
+      contextPage: activeContext.page || 'general',
+      contextScopeKey: activeContextScopeKey,
+    };
+    const userMessage = createMessage('user', trimmed, contextMessageMeta);
     const assistantMessage = createMessage('assistant', '', {
       sendable: false,
       reasoning: '',
@@ -476,12 +1035,15 @@ export const AIChatProvider = ({ children }) => {
       streaming: true,
       streamError: '',
       error: false,
+      ...contextMessageMeta,
     });
     const currentMessages = messagesRef.current;
     const nextDisplayMessages = [...currentMessages, userMessage, assistantMessage];
     messagesRef.current = nextDisplayMessages;
     setMessages(nextDisplayMessages);
     setIsSending(true);
+    const streamAbortController = new AbortController();
+    activeStreamAbortRef.current = streamAbortController;
 
     // --- Batched delta updates via requestAnimationFrame ---
     // Instead of calling setMessages on every single token (which causes
@@ -536,13 +1098,23 @@ export const AIChatProvider = ({ children }) => {
       const currentSettings = aiSettingsRef.current;
       const selectedModel = currentSettings.selectedModel;
       const useCustomConfig = currentSettings.customModel && selectedModel === currentSettings.customModel;
+      const requestSourceMessages = shouldLimitHistoryToContext(activeContext)
+        ? nextDisplayMessages.filter((message) => (
+            message.sendable !== false
+            && message.contextScopeKey === activeContextScopeKey
+          ))
+        : nextDisplayMessages.filter((message) => message.sendable !== false);
       
       const payload = {
-        messages: nextDisplayMessages
-          .filter((message) => message.sendable !== false)
+        messages: requestSourceMessages
           .map(({ role, content: messageContent }) => ({ role, content: messageContent })),
         context: activeContext,
         model: selectedModel || undefined,
+        enable_thinking: currentSettings.thinkingEnabled,
+        enable_web_search: currentSettings.webSearchEnabled,
+        web_search_freshness: currentSettings.webSearchEnabled
+          ? normalizeWebSearchFreshness(currentSettings.webSearchFreshness)
+          : undefined,
         custom_config: useCustomConfig ? {
           base_url: currentSettings.customBaseUrl || undefined,
           api_key: getLocalAISettings()?.apiKey || undefined,
@@ -553,6 +1125,7 @@ export const AIChatProvider = ({ children }) => {
       const response = await fetch(buildApiUrl('/api/ai/chat/stream'), {
         method: 'POST',
         headers: buildStreamRequestHeaders(),
+        signal: streamAbortController.signal,
         body: JSON.stringify(payload),
       });
 
@@ -588,6 +1161,45 @@ export const AIChatProvider = ({ children }) => {
           return;
         }
 
+        if (event.type === 'web_search_start') {
+          patchAssistantMessageSync({
+            webSearch: {
+              status: 'searching',
+              query: event.query || trimmed,
+              count: 0,
+              sources: [],
+              message: '',
+            },
+          });
+          return;
+        }
+
+        if (event.type === 'web_search_done') {
+          patchAssistantMessageSync({
+            webSearch: {
+              status: 'done',
+              query: event.query || trimmed,
+              count: Number(event.count || 0),
+              sources: Array.isArray(event.sources) ? event.sources : [],
+              message: '',
+            },
+          });
+          return;
+        }
+
+        if (event.type === 'web_search_error') {
+          patchAssistantMessageSync({
+            webSearch: {
+              status: 'error',
+              query: event.query || trimmed,
+              count: 0,
+              sources: [],
+              message: event.message || '联网搜索失败',
+            },
+          });
+          return;
+        }
+
         if (event.type === 'content_delta') {
           patchAssistantMessage((message) => ({
             content: `${message.content || ''}${event.delta || ''}`,
@@ -602,6 +1214,7 @@ export const AIChatProvider = ({ children }) => {
             reasoning: event.reasoning || '',
             reasoningComplete: true,
             streaming: false,
+            sendable: true,
             error: false,
             streamError: '',
           });
@@ -620,12 +1233,13 @@ export const AIChatProvider = ({ children }) => {
           patchAssistantMessageSync((message) => {
             const hasOutput = Boolean(message.content || message.reasoning);
             return {
-              content: hasOutput ? message.content : (event.message || 'AI 助手暂时没能回复成功，请稍后再试。'),
+              content: hasOutput ? message.content : (event.message || 'Berry 暂时没能回复成功，请稍后再试。'),
               reasoning: message.reasoning || '',
               reasoningComplete: true,
               streaming: false,
+              sendable: false,
               error: true,
-              streamError: hasOutput ? (event.message || 'AI 助手暂时没能回复成功，请稍后再试。') : '',
+              streamError: hasOutput ? (event.message || 'Berry 暂时没能回复成功，请稍后再试。') : '',
             };
           });
         }
@@ -635,13 +1249,30 @@ export const AIChatProvider = ({ children }) => {
         patchAssistantMessageSync((message) => ({
           streaming: false,
           reasoningComplete: Boolean(message.reasoning),
+          sendable: Boolean(message.content),
         }));
       }
 
       const finalAssistantMessage = messagesRef.current.find((message) => message.id === assistantMessage.id);
       return finalAssistantMessage;
     } catch (error) {
-      const fallbackText = error?.message || error?.response?.data?.detail || 'AI 助手暂时没能回复成功，请稍后再试。';
+      if (streamAbortController.signal.aborted) {
+        patchAssistantMessageSync((message) => {
+          const hasOutput = Boolean(message.content || message.reasoning);
+          return {
+            content: hasOutput ? message.content : '已停止生成',
+            reasoning: message.reasoning || '',
+            reasoningComplete: Boolean(message.reasoning),
+            streaming: false,
+            sendable: Boolean(message.content),
+            error: false,
+            streamError: '',
+          };
+        });
+        return null;
+      }
+
+      const fallbackText = error?.message || error?.response?.data?.detail || 'Berry 暂时没能回复成功，请稍后再试。';
       patchAssistantMessageSync((message) => {
         const hasOutput = Boolean(message.content || message.reasoning);
         return {
@@ -649,6 +1280,7 @@ export const AIChatProvider = ({ children }) => {
           reasoning: message.reasoning || '',
           reasoningComplete: Boolean(message.reasoning),
           streaming: false,
+          sendable: false,
           error: true,
           streamError: hasOutput ? fallbackText : '',
         };
@@ -659,9 +1291,16 @@ export const AIChatProvider = ({ children }) => {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
       }
+      if (activeStreamAbortRef.current === streamAbortController) {
+        activeStreamAbortRef.current = null;
+      }
       setIsSending(false);
     }
   }, [chatContext, isSending]);
+
+  const stopGeneration = useCallback(() => {
+    activeStreamAbortRef.current?.abort();
+  }, []);
 
   const openWithPrompt = useCallback((prompt, options = {}) => (
     sendMessage(prompt, { ...options, openDrawer: true })
@@ -672,6 +1311,8 @@ export const AIChatProvider = ({ children }) => {
     openDrawer,
     closeDrawer,
     chatContext,
+    chatSessions,
+    activeChatSessionId,
     setPageContext,
     clearPageContext,
     messages,
@@ -684,14 +1325,25 @@ export const AIChatProvider = ({ children }) => {
     testAISettings,
     isSending,
     sendMessage,
+    stopGeneration,
     selectModel,
     openWithPrompt,
+    loadChatSession,
+    startNewConversation,
+    updateChatSessionTitle,
+    toggleChatSessionFavorite,
+    deleteChatSession,
     resetConversation,
+    setThinkingEnabled,
+    setWebSearchEnabled,
+    setWebSearchFreshness,
   }), [
     isOpen,
     openDrawer,
     closeDrawer,
     chatContext,
+    chatSessions,
+    activeChatSessionId,
     setPageContext,
     clearPageContext,
     messages,
@@ -704,9 +1356,18 @@ export const AIChatProvider = ({ children }) => {
     testAISettings,
     isSending,
     sendMessage,
+    stopGeneration,
     selectModel,
     openWithPrompt,
+    loadChatSession,
+    startNewConversation,
+    updateChatSessionTitle,
+    toggleChatSessionFavorite,
+    deleteChatSession,
     resetConversation,
+    setThinkingEnabled,
+    setWebSearchEnabled,
+    setWebSearchFreshness,
   ]);
 
   return <AIChatContext.Provider value={value}>{children}</AIChatContext.Provider>;

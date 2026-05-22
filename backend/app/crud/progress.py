@@ -9,11 +9,20 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 import random
 import re
+import time
 from .. import models, schemas, auth
+from ..config.settings import LEADERBOARD_CACHE_TTL_SECONDS
 from .common import calculate_next_review_date
+from .sm2 import calculate_sm2
 
 
 from sqlalchemy import desc
+
+_leaderboard_cache: dict[int, tuple[float, list[dict]]] = {}
+
+
+def clear_global_leaderboard_cache() -> None:
+    _leaderboard_cache.clear()
 
 # ============ 学习进度相关 ============
 
@@ -143,7 +152,7 @@ def maybe_upgrade_user_to_premium(db: Session, user_id: int) -> Optional[models.
     db.refresh(user)
     return user
 
-def update_word_progress(db: Session, user_id: int, word_id: int, status: str) -> models.LearningProgress:
+def update_word_progress(db: Session, user_id: int, word_id: int, status: str, quality: Optional[int] = None) -> models.LearningProgress:
     """更新单词学习状态"""
     progress = get_word_progress(db, user_id, word_id)
     now = datetime.now(timezone.utc)
@@ -160,18 +169,40 @@ def update_word_progress(db: Session, user_id: int, word_id: int, status: str) -
             word_id=word_id,
             status=status,
             last_reviewed=now,
-            review_count=1
+            review_count=1,
+            easiness_factor=2.5,
+            interval=0,
+            repetitions=0
         )
         db.add(progress)
 
     if status in ['learning', 'mastered']:
-        difficulty_level = progress.difficulty_level or 3
-        progress.difficulty_level = difficulty_level
-        progress.next_review_date = calculate_next_review_date(
-            progress.review_count,
-            difficulty_level,
-            progress.last_reviewed
-        )
+        if quality is not None and 0 <= quality <= 5:
+            new_reps, new_ef, new_interval = calculate_sm2(
+                quality=quality,
+                repetitions=progress.repetitions,
+                easiness_factor=progress.easiness_factor,
+                interval=progress.interval
+            )
+            progress.repetitions = new_reps
+            progress.easiness_factor = new_ef
+            progress.interval = new_interval
+            progress.next_review_date = now + timedelta(days=new_interval)
+            
+            # Map quality (0-5) back to old difficulty scale (1-5) roughly for backward compatibility
+            # Quality 5 (Easy) -> Diff 1
+            # Quality 4 (Good) -> Diff 2
+            # Quality 3 (Hard) -> Diff 3
+            # Quality 0-2 (Fail) -> Diff 4-5
+            progress.difficulty_level = max(1, min(5, round(5.5 - quality)))
+        else:
+            difficulty_level = progress.difficulty_level or 3
+            progress.difficulty_level = difficulty_level
+            progress.next_review_date = calculate_next_review_date(
+                progress.review_count,
+                difficulty_level,
+                progress.last_reviewed
+            )
     else:
         progress.next_review_date = None
 
@@ -180,6 +211,7 @@ def update_word_progress(db: Session, user_id: int, word_id: int, status: str) -
     db.refresh(progress)
     if status in ['learning', 'mastered']:
         maybe_upgrade_user_to_premium(db, user_id)
+    clear_global_leaderboard_cache()
     return progress
 
 def get_all_progress(db: Session, user_id: int, status: Optional[str] = None) -> List[dict]:
@@ -212,33 +244,68 @@ def get_all_progress(db: Session, user_id: int, status: Optional[str] = None) ->
 
 
 def get_global_leaderboard(db: Session, current_user_id: int, limit: int = 10) -> List[dict]:
-    """获取全球排行榜，计算积分 (已掌握词汇数量 * 10)"""
+    """获取全球排行榜，计算多维度积分"""
+    normalized_limit = max(1, min(int(limit or 10), 100))
+    now = time.monotonic()
+    cached = _leaderboard_cache.get(normalized_limit)
+    if cached and now - cached[0] <= LEADERBOARD_CACHE_TTL_SECONDS:
+        base_rows = cached[1]
+    else:
+        base_rows = _query_global_leaderboard(db, normalized_limit)
+        if LEADERBOARD_CACHE_TTL_SECONDS > 0:
+            _leaderboard_cache[normalized_limit] = (now, base_rows)
+
+    return [
+        {
+            "rank": row["rank"],
+            "username": row["username"],
+            "role": row["role"],
+            "avatar_type": row["avatar_type"],
+            "avatar_value": row["avatar_value"],
+            "score": row["score"],
+            "is_user": row["user_id"] == current_user_id,
+        }
+        for row in base_rows
+    ]
+
+
+def _query_global_leaderboard(db: Session, limit: int) -> List[dict]:
+    score_expr = (
+        func.coalesce(func.sum(case((models.LearningProgress.status == 'mastered', 1), else_=0)), 0) * 10 +
+        func.coalesce(func.sum(case((models.LearningProgress.status == 'learning', 1), else_=0)), 0) * 2 +
+        func.coalesce(func.max(models.CheckInStreak.total_check_ins), 0) * 5 +
+        func.coalesce(func.max(models.CheckInStreak.longest_streak), 0) * 10
+    ).label('total_score')
+
     results = db.query(
         models.User.username,
         models.User.id,
         models.User.role,
         models.User.avatar_type,
         models.User.avatar_value,
-        func.count(models.LearningProgress.id).label('mastered_count')
+        score_expr
     ).outerjoin(
         models.LearningProgress, 
-        and_(models.User.id == models.LearningProgress.user_id, models.LearningProgress.status == 'mastered')
+        models.User.id == models.LearningProgress.user_id
+    ).outerjoin(
+        models.CheckInStreak,
+        models.User.id == models.CheckInStreak.user_id
     ).group_by(
         models.User.id
     ).order_by(
-        desc('mastered_count'), models.User.id
+        desc('total_score'), models.User.id
     ).limit(limit).all()
 
     leaderboard = []
-    for rank, (username, user_id, role, avatar_type, avatar_value, count) in enumerate(results, start=1):
+    for rank, (username, user_id, role, avatar_type, avatar_value, score) in enumerate(results, start=1):
         leaderboard.append({
             "rank": rank,
             "username": username,
+            "user_id": user_id,
             "role": role,
             "avatar_type": avatar_type,
             "avatar_value": avatar_value,
-            "score": count * 10,
-            "is_user": user_id == current_user_id
+            "score": score,
         })
     return leaderboard
 
@@ -313,6 +380,7 @@ def update_check_in(db: Session, user_id: int, words_learned: int, words_reviewe
 
     db.commit()
     db.refresh(streak)
+    clear_global_leaderboard_cache()
     return streak
 
 def get_check_in_history(db: Session, user_id: int, days: int = 30) -> List[models.DailyCheckIn]:

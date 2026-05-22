@@ -7,7 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List
 
@@ -18,10 +18,13 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..dependencies import get_current_user, has_min_role
+from ..crud.sm2 import calculate_sm2
 
 router = APIRouter()
 
 DEFAULT_GROUP_NAME = "默认分组"
+MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_ROWS = 10_000
 HEADER_ALIASES = {
     "word": {"word", "单词", "词汇", "vocabulary", "word_name"},
     "explanation": {"explanation", "释义", "中文", "meaning", "definition"},
@@ -87,7 +90,15 @@ def load_csv_rows(raw_bytes: bytes) -> List[dict]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="CSV 文件缺少表头",
         )
-    return list(reader)
+    rows = []
+    for index, row in enumerate(reader, start=1):
+        if index > MAX_IMPORT_ROWS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"导入文件最多支持 {MAX_IMPORT_ROWS} 行数据",
+            )
+        rows.append(row)
+    return rows
 
 
 def load_xlsx_rows(raw_bytes: bytes) -> List[dict]:
@@ -102,17 +113,26 @@ def load_xlsx_rows(raw_bytes: bytes) -> List[dict]:
     workbook = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
     try:
         sheet = workbook.active
-        rows = list(sheet.iter_rows(values_only=True))
+        iterator = sheet.iter_rows(values_only=True)
+        header_row = next(iterator, None)
+        if header_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="XLSX 文件为空",
+            )
+
+        headers = [stringify_cell(cell) for cell in header_row]
+        rows = []
+        for index, row in enumerate(iterator, start=1):
+            if index > MAX_IMPORT_ROWS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"导入文件最多支持 {MAX_IMPORT_ROWS} 行数据",
+                )
+            rows.append(row)
     finally:
         workbook.close()
 
-    if not rows:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="XLSX 文件为空",
-        )
-
-    headers = [stringify_cell(cell) for cell in rows[0]]
     if not any(headers):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -120,7 +140,7 @@ def load_xlsx_rows(raw_bytes: bytes) -> List[dict]:
         )
 
     results = []
-    for row in rows[1:]:
+    for row in rows:
         record = {}
         for index, header in enumerate(headers):
             if not header:
@@ -335,7 +355,7 @@ def build_book_detail(db: Session, book: models.CustomBook, user_id: int) -> dic
     }
 
 
-def update_custom_book_progress(db: Session, user_id: int, book_word_id: int, status_value: str) -> models.CustomBookProgress:
+def update_custom_book_progress(db: Session, user_id: int, book_word_id: int, status_value: str, quality: int | None = None) -> models.CustomBookProgress:
     progress = db.query(models.CustomBookProgress).filter(
         models.CustomBookProgress.user_id == user_id,
         models.CustomBookProgress.book_word_id == book_word_id,
@@ -346,7 +366,6 @@ def update_custom_book_progress(db: Session, user_id: int, book_word_id: int, st
         progress.status = status_value
         progress.last_reviewed = now
         progress.review_count = (progress.review_count or 0) + 1
-        progress.updated_at = now
     else:
         progress = models.CustomBookProgress(
             user_id=user_id,
@@ -356,9 +375,28 @@ def update_custom_book_progress(db: Session, user_id: int, book_word_id: int, st
             review_count=1,
             created_at=now,
             updated_at=now,
+            easiness_factor=2.5,
+            interval=0,
+            repetitions=0
         )
         db.add(progress)
 
+    if status_value in ['learning', 'mastered'] and quality is not None and 0 <= quality <= 5:
+        new_reps, new_ef, new_interval = calculate_sm2(
+            quality=quality,
+            repetitions=progress.repetitions,
+            easiness_factor=progress.easiness_factor,
+            interval=progress.interval
+        )
+        progress.repetitions = new_reps
+        progress.easiness_factor = new_ef
+        progress.interval = new_interval
+        progress.next_review_date = now + timedelta(days=new_interval)
+    else:
+        if status_value not in ['learning', 'mastered']:
+            progress.next_review_date = None
+
+    progress.updated_at = now
     db.commit()
     db.refresh(progress)
     return progress
@@ -392,11 +430,23 @@ async def import_custom_book(
             detail="请先选择要导入的文件",
         )
 
-    raw_bytes = await file.read()
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".csv", ".xlsx"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="仅支持导入 CSV 或 XLSX 文件",
+        )
+
+    raw_bytes = await file.read(MAX_IMPORT_FILE_SIZE_BYTES + 1)
     if not raw_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="导入文件为空",
+        )
+    if len(raw_bytes) > MAX_IMPORT_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="导入文件大小不能超过 5MB",
         )
 
     parsed_rows = parse_import_rows(file.filename, raw_bytes)
@@ -527,7 +577,7 @@ async def save_custom_word_progress(
     current_user: models.User = Depends(require_custom_books_access),
 ):
     word = get_custom_word_or_404(db, word_id, current_user.id)
-    return update_custom_book_progress(db, current_user.id, word.id, progress_update.status)
+    return update_custom_book_progress(db, current_user.id, word.id, progress_update.status, progress_update.quality)
 
 
 @router.delete("/{book_id}")

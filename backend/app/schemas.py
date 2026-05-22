@@ -185,6 +185,7 @@ class ProgressCreate(ProgressBase):
 
 class ProgressUpdate(BaseModel):
     status: Literal['unlearned', 'learning', 'mastered']
+    quality: Optional[int] = None
 
 class Progress(ProgressBase):
     id: int
@@ -315,7 +316,7 @@ class CustomBookProgressBase(BaseModel):
 
 
 class CustomBookProgressUpdate(CustomBookProgressBase):
-    pass
+    quality: Optional[int] = None
 
 
 class CustomBookProgress(CustomBookProgressBase):
@@ -375,6 +376,13 @@ class CheckInStreakInfo(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ProgressDashboard(BaseModel):
+    stats: ProgressStats
+    streakInfo: CheckInStreakInfo
+    leaderboard: List[LeaderboardEntry]
+    chapterProgress: List[ChapterProgressStats]
+
 class DailyCheckInInfo(BaseModel):
     check_in_date: datetime
     words_learned: int
@@ -433,7 +441,7 @@ class QuizSessionSnapshot(BaseModel):
     answers: List[QuizSavedAnswer]
 
 
-# ============ AI 助手相关 ============
+# ============ Berry 相关 ============
 
 class AIChatMessage(BaseModel):
     role: Literal['system', 'user', 'assistant']
@@ -457,6 +465,9 @@ class AIChatRequest(BaseModel):
     messages: List[AIChatMessage]
     context: Optional[dict[str, Any]] = None
     model: Optional[str] = None
+    enable_thinking: Optional[bool] = None
+    enable_web_search: Optional[bool] = None
+    web_search_freshness: Optional[Literal['noLimit', 'oneDay', 'oneWeek', 'oneMonth', 'oneYear']] = None
     custom_config: Optional[AICustomConfig] = None
 
     @field_validator('messages')
@@ -642,3 +653,4 @@ class AISettingsResponse(BaseModel):
     active_model: str
     active_model_display_name: str
     available_models: List[str]
+    thinking_enabled: Optional[bool] = None

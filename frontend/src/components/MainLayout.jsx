@@ -98,7 +98,7 @@ const MainLayout = () => {
     {
       key: '/home',
       icon: <AppstoreOutlined />,
-      label: '数据看板',
+      label: '学习中心',
     },
     {
       type: 'divider',

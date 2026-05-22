@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Drawer, FloatButton, Input, Modal, Select, Space, Typography, message } from 'antd';
-import { BulbOutlined, DeleteOutlined, DownOutlined, LinkOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RobotOutlined, SendOutlined, SettingOutlined, ThunderboltFilled } from '@ant-design/icons';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Button, Drawer, Dropdown, Empty, FloatButton, Input, Modal, Select, Space, Tooltip, Typography, message } from 'antd';
+import { AudioOutlined, SoundOutlined, BulbOutlined, CaretUpOutlined, ClockCircleOutlined, CloseOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, GlobalOutlined, LinkOutlined, MessageOutlined, PlusOutlined, ReloadOutlined, RightOutlined, RobotOutlined, SearchOutlined, SendOutlined, SettingOutlined, StarFilled, StarOutlined, ThunderboltFilled } from '@ant-design/icons';
 import { useAIChat } from '../context/AIChatContext';
 import { useAuth } from '../context/AuthContext';
 import AIMarkdownContent from './AIMarkdownContent';
 import UserAvatar from './UserAvatar';
+import { getAvatarSrc } from '../utils/avatars';
 
 const { Text, Title } = Typography;
 
 const MODEL_PROVIDER_ORDER = ['OpenAI', 'DeepSeek', 'Anthropic (Claude)', 'Kimi', 'Other models'];
 const AI_DRAWER_WIDTH_KEY = 'ieltswords_ai_drawer_width';
+const AI_WEB_SEARCH_AUTO_EXPAND_KEY = 'ieltswords_ai_web_search_auto_expand';
 const AI_DRAWER_DEFAULT_WIDTH = 420;
 const AI_DRAWER_MIN_WIDTH = 360;
 const AI_DRAWER_MAX_WIDTH = 760;
@@ -54,7 +56,7 @@ const extractModelDisplayName = (model) => {
   return parts[parts.length - 1];
 };
 
-const groupModels = (models, activeModel, activeModelDisplayName) => {
+const groupModels = (models, activeModel, activeModelDisplayName, systemModel, systemModelDisplayName) => {
   const groups = new Map();
 
   models.forEach((model) => {
@@ -62,9 +64,13 @@ const groupModels = (models, activeModel, activeModelDisplayName) => {
     if (!groups.has(provider)) {
       groups.set(provider, []);
     }
-    const labelText = (model === activeModel && activeModelDisplayName)
-      ? activeModelDisplayName
-      : extractModelDisplayName(model);
+
+    let labelText = extractModelDisplayName(model);
+    if (model === systemModel && systemModelDisplayName) {
+      labelText = systemModelDisplayName;
+    } else if (model === activeModel && activeModelDisplayName) {
+      labelText = activeModelDisplayName;
+    }
       
     const label = buildModelLabel(labelText);
       
@@ -81,6 +87,322 @@ const groupModels = (models, activeModel, activeModelDisplayName) => {
       options: groups.get(provider),
     }));
 };
+
+const formatChatSessionTime = (timestamp) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const pad = (value) => String(value).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const second = pad(date.getSeconds());
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+};
+
+const HISTORY_DATE_GROUPS = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
+  { key: 'week', label: '本周' },
+  { key: 'earlier', label: '更早' },
+];
+
+const normalizeHistoryText = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+const escapeHtml = (text) => String(text || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const encodeMarkdownExportContent = (text) => {
+  const content = String(text || '');
+  if (!content) {
+    return '';
+  }
+
+  try {
+    const bytes = new TextEncoder().encode(content);
+    let binary = '';
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return window.btoa(binary);
+  } catch {
+    return '';
+  }
+};
+
+const getFirstUserQuestion = (session) => {
+  const firstUserMessage = Array.isArray(session?.messages)
+    ? session.messages.find((messageItem) => messageItem?.role === 'user' && normalizeHistoryText(messageItem?.content))
+    : null;
+
+  return normalizeHistoryText(firstUserMessage?.content) || '未开始对话';
+};
+
+const startOfLocalDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const getLocalWeekStart = (date) => {
+  const weekStart = startOfLocalDay(date);
+  const day = weekStart.getDay() || 7;
+  weekStart.setDate(weekStart.getDate() - day + 1);
+  return weekStart;
+};
+
+const getHistoryDateGroupKey = (timestamp) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return 'earlier';
+  }
+
+  const now = new Date();
+  const todayStart = startOfLocalDay(now);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const weekStart = getLocalWeekStart(now);
+  const sessionDay = startOfLocalDay(date);
+
+  if (sessionDay.getTime() >= todayStart.getTime()) {
+    return 'today';
+  }
+  if (sessionDay.getTime() >= yesterdayStart.getTime()) {
+    return 'yesterday';
+  }
+  if (sessionDay.getTime() >= weekStart.getTime()) {
+    return 'week';
+  }
+  return 'earlier';
+};
+
+const groupChatSessionsByDate = (sessions) => {
+  const grouped = HISTORY_DATE_GROUPS.map((group) => ({ ...group, sessions: [] }));
+  const groupMap = new Map(grouped.map((group) => [group.key, group]));
+
+  sessions.forEach((session) => {
+    const groupKey = getHistoryDateGroupKey(session.updatedAt || session.createdAt);
+    groupMap.get(groupKey)?.sessions.push(session);
+  });
+
+  return grouped.filter((group) => group.sessions.length > 0);
+};
+
+const buildWebSearchHTML = (webSearch) => {
+  if (!webSearch) return '';
+  const sources = Array.isArray(webSearch.sources) ? webSearch.sources : [];
+  let sourcesHtml = '';
+  if (sources.length > 0) {
+    sourcesHtml = `
+      <div class="search-sources">
+        <div style="margin-bottom: 6px; color: #64748b; font-weight: 500;">参考来源：</div>
+        <div style="display: flex; flex-direction: column; gap: 6px; padding-left: 4px;">
+          ${sources.map((s, i) => {
+            const title = normalizeHistoryText(s.title) || `来源 ${i + 1}`;
+            const url = normalizeHistoryText(s.url);
+            return url
+              ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display: block; line-height: 1.4; word-break: break-all;">${i + 1}. ${escapeHtml(title)}</a>`
+              : `<span style="display: block; line-height: 1.4; word-break: break-all;">${i + 1}. ${escapeHtml(title)}</span>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  const statusText = webSearch.status === 'done' ? '已完成' : webSearch.status === 'error' ? '失败' : '搜索中';
+  const queryHtml = webSearch.query ? `<div>搜索词：${escapeHtml(webSearch.query)}</div>` : '';
+  const msgHtml = webSearch.message ? `<div>提示：${escapeHtml(webSearch.message)}</div>` : '';
+  return `
+    <details class="search-box">
+      <summary class="search-title">🔍 联网搜索 (${statusText})</summary>
+      <div class="search-content">
+        ${queryHtml}
+        ${msgHtml}
+        ${sourcesHtml}
+      </div>
+    </details>
+  `;
+};
+
+const buildChatExportHTML = (session, userAvatarSrc, aiAvatarSrc) => {
+  const title = normalizeHistoryText(session?.title) || '新聊天';
+  const updatedAt = formatChatSessionTime(session?.updatedAt || session?.createdAt);
+
+  const messagesHtml = (session?.messages || [])
+    .filter((msg) => normalizeHistoryText(msg?.content) || msg?.webSearch)
+    .map((msg) => {
+      const isUser = msg.role === 'user';
+      const roleClass = isUser ? 'user' : 'ai';
+      const roleName = isUser ? '用户' : 'Berry';
+      const avatarSrc = isUser ? userAvatarSrc : aiAvatarSrc;
+      const webSearchHtml = !isUser ? buildWebSearchHTML(msg.webSearch) : '';
+
+      let contentHtml = '';
+      if (isUser) {
+        contentHtml = msg.content ? `<div>${escapeHtml(msg.content).replace(/\n/g, '<br/>')}</div>` : '';
+      } else {
+        const encodedMarkdown = encodeMarkdownExportContent(msg.content);
+        contentHtml = encodedMarkdown
+          ? `<div class="markdown-content" data-markdown="${encodedMarkdown}" style="display:none;"></div><div class="markdown-rendered">加载中...</div>`
+          : '';
+      }
+
+      return `
+        <div class="message ${roleClass}">
+          <div class="message-header">
+            <img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(roleName)}" class="message-avatar" />
+            <div class="message-author">${escapeHtml(roleName)}</div>
+          </div>
+          <div class="message-bubble">
+            ${webSearchHtml}
+            ${contentHtml}
+          </div>
+        </div>
+      `;
+    }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)}</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root { --primary: #6366f1; --bg: #f8fafc; --text: #334155; --bubble-ai: #ffffff; --bubble-user: #e0e7ff; --border: #e2e8f0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; line-height: 1.6; }
+  .container { max-width: 800px; margin: 0 auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; }
+  .header { text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 30px; }
+  .header h1 { margin: 0 0 10px 0; font-size: 24px; color: #0f172a; }
+  .header p { margin: 0; color: #64748b; font-size: 14px; }
+  .chat-list { display: flex; flex-direction: column; gap: 24px; }
+  .message { display: flex; flex-direction: column; max-width: 85%; }
+  .message.user { align-self: flex-end; }
+  .message.ai { align-self: flex-start; }
+  .message-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 0 4px; }
+  .user .message-header { flex-direction: row-reverse; }
+  .message-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+  .message-author { font-size: 12px; color: #94a3b8; }
+  .message-bubble { padding: 12px 18px; border-radius: 16px; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); word-break: break-word; }
+  .user .message-bubble { background-color: var(--bubble-user); color: #1e1b4b; border-bottom-right-radius: 4px; }
+  .ai .message-bubble { background-color: var(--bubble-ai); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  details.search-box { background: #f1f5f9; border-radius: 12px; padding: 12px; margin-bottom: 12px; font-size: 12px; color: #475569; }
+  details.search-box summary { font-weight: 600; cursor: pointer; outline: none; user-select: none; }
+  .search-content { margin-top: 10px; }
+  .search-sources { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
+  .search-sources a { color: var(--primary); text-decoration: none; margin-right: 12px; display: inline-block; }
+  .search-sources a:hover { text-decoration: underline; }
+  .markdown-rendered p { margin-top: 0; margin-bottom: 1em; }
+  .markdown-rendered p:last-child { margin-bottom: 0; }
+  .markdown-rendered pre { background: #f8fafc; padding: 12px; border-radius: 8px; overflow-x: auto; }
+  .markdown-rendered code { font-family: monospace; background: #f1f5f9; padding: 2px 4px; border-radius: 4px; }
+  .markdown-rendered pre code { background: none; padding: 0; }
+  .markdown-rendered table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+  .markdown-rendered th, .markdown-rendered td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+  .markdown-rendered th { background: #f1f5f9; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>${escapeHtml(title)}</h1>
+    <p>导出时间：${escapeHtml(updatedAt || '未知')} | 来源：Berry 学习助手</p>
+  </div>
+  <div class="chat-list">
+    ${messagesHtml}
+  </div>
+</div>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll('.markdown-content').forEach(el => {
+      const renderedContainer = el.nextElementSibling;
+      if (renderedContainer && renderedContainer.classList.contains('markdown-rendered')) {
+        const encodedText = el.dataset.markdown || '';
+        let rawText = '';
+
+        try {
+          const binary = window.atob(encodedText);
+          const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+          rawText = new TextDecoder().decode(bytes);
+        } catch (error) {
+          renderedContainer.textContent = '导出内容解析失败';
+          return;
+        }
+
+        const sourcePattern = /\\n(?:#{1,6}\\s*)?(?:\\*\\*)?\\s*(?:来源|参考来源|资料来源|Sources|References|Source)\\s*(?:[：:])?\\s*(?:\\*\\*)?\\s*\\n/i;
+        const parts = rawText.split(sourcePattern);
+
+        if (parts.length > 1) {
+          const bodyText = parts[0];
+          const sourcesText = parts.slice(1).join('\\n');
+          renderedContainer.innerHTML = marked.parse(bodyText) +
+            '<details class="search-box" style="margin-top:16px;">' +
+            '<summary class="search-title">🔍 来源</summary>' +
+            '<div class="search-content">' + marked.parse(sourcesText) + '</div>' +
+            '</details>';
+        } else {
+          renderedContainer.innerHTML = marked.parse(rawText);
+        }
+      }
+    });
+  });
+</script>
+</body>
+</html>`;
+};
+
+const createSafeDownloadName = (title) => {
+  const safeTitle = normalizeHistoryText(title)
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .slice(0, 42) || 'Berry聊天记录';
+  return `${safeTitle}.html`;
+};
+
+const SOURCE_BADGE_COLORS = ['#2563eb', '#0ea5e9', '#f97316', '#14b8a6', '#8b5cf6', '#ef4444'];
+const WEB_SEARCH_FRESHNESS_OPTIONS = [
+  { key: 'noLimit', label: '不限' },
+  { key: 'oneDay', label: '一天内' },
+  { key: 'oneWeek', label: '一周内' },
+  { key: 'oneMonth', label: '一个月内' },
+  { key: 'oneYear', label: '一年内' },
+];
+const WEB_SEARCH_FRESHNESS_LABELS = WEB_SEARCH_FRESHNESS_OPTIONS.reduce((labels, option) => {
+  labels[option.key] = option.label;
+  return labels;
+}, {});
+
+const getSourceBadgeText = (source, index) => {
+  const title = normalizeHistoryText(source?.title);
+  if (!title) {
+    return String(index + 1);
+  }
+  const firstChar = [...title][0];
+  return /[a-z0-9]/i.test(firstChar) ? firstChar.toUpperCase() : firstChar;
+};
+
+const getSearchSourceDomain = (source) => {
+  const rawUrl = normalizeHistoryText(source?.url);
+  if (!rawUrl) {
+    return '搜索来源';
+  }
+
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, '') || '搜索来源';
+  } catch {
+    return rawUrl
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0]
+      || '搜索来源';
+  }
+};
+
+const getSearchSourceTitle = (source, index) => (
+  normalizeHistoryText(source?.title) || normalizeHistoryText(source?.url) || `搜索结果 ${index + 1}`
+);
 
 const bubbleStyle = (role, isError) => {
   if (role === 'user') {
@@ -107,19 +429,37 @@ const AIChatWidget = () => {
     openDrawer,
     closeDrawer,
     chatContext,
+    chatSessions,
+    activeChatSessionId,
     messages,
     aiSettings,
     isSettingsSaving,
     isSending,
     sendMessage,
+    stopGeneration,
     selectModel,
+    loadChatSession,
+    startNewConversation,
+    updateChatSessionTitle,
+    toggleChatSessionFavorite,
+    deleteChatSession,
+    setThinkingEnabled,
+    setWebSearchEnabled,
+    setWebSearchFreshness,
     saveAISettings,
     resetAISettings,
     testAISettings,
     resetConversation,
   } = useAIChat();
   const [draft, setDraft] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyView, setHistoryView] = useState('all');
+  const [historySearchKeyword, setHistorySearchKeyword] = useState('');
+  const [editingHistorySession, setEditingHistorySession] = useState(null);
+  const [editingHistoryTitle, setEditingHistoryTitle] = useState('');
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
   const [modelDisplayNameDraft, setModelDisplayNameDraft] = useState('');
@@ -127,6 +467,13 @@ const AIChatWidget = () => {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [expandedReasoningIds, setExpandedReasoningIds] = useState(() => new Set());
+  const [expandedWebSearchIds, setExpandedWebSearchIds] = useState(() => new Set());
+  const [autoExpandWebSearch, setAutoExpandWebSearch] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem(AI_WEB_SEARCH_AUTO_EXPAND_KEY) === 'true';
+  });
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -145,6 +492,7 @@ const AIChatWidget = () => {
   const lastOpenRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const reasoningCompletionRef = useRef(new Set());
+  const autoExpandedWebSearchRef = useRef(new Set());
   const canUseAI = aiSettings.canUseAI;
   const isDesktop = viewportWidth >= AI_DRAWER_DESKTOP_BREAKPOINT;
   const activeDrawerWidth = isDesktop ? clampDrawerWidth(drawerWidth, viewportWidth) : '100vw';
@@ -226,7 +574,9 @@ const AIChatWidget = () => {
     const options = groupModels(
       systemModels,
       aiSettings.activeModel,
-      aiSettings.activeModelDisplayName
+      aiSettings.activeModelDisplayName,
+      aiSettings.systemModel,
+      aiSettings.systemModelDisplayName
     );
     
     if (aiSettings.customModel) {
@@ -239,9 +589,70 @@ const AIChatWidget = () => {
       });
     }
     return options;
-  }, [aiSettings.availableModels, aiSettings.activeModel, aiSettings.activeModelDisplayName, aiSettings.customModel, aiSettings.customModelDisplayName]);
+  }, [
+    aiSettings.availableModels,
+    aiSettings.activeModel,
+    aiSettings.activeModelDisplayName,
+    aiSettings.customModel,
+    aiSettings.customModelDisplayName,
+    aiSettings.systemModel,
+    aiSettings.systemModelDisplayName,
+  ]);
   const selectedModel = aiSettings.selectedModel || aiSettings.activeModel || '';
   const shouldShowModelBox = Boolean(selectedModel) || modelOptions.length > 0;
+  const shouldShowControlRow = shouldShowModelBox || canUseAI;
+  const selectedWebSearchFreshness = aiSettings.webSearchFreshness || 'noLimit';
+  const selectedWebSearchFreshnessLabel = WEB_SEARCH_FRESHNESS_LABELS[selectedWebSearchFreshness] || '不限';
+  const sortedChatSessions = useMemo(() => (
+    [...(chatSessions || [])].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+  ), [chatSessions]);
+  const favoriteChatSessionCount = useMemo(() => (
+    sortedChatSessions.filter((session) => session.favorite).length
+  ), [sortedChatSessions]);
+  const filteredChatSessions = useMemo(() => {
+    const keyword = historySearchKeyword.trim().toLowerCase();
+    const baseSessions = historyView === 'favorites'
+      ? sortedChatSessions.filter((session) => session.favorite)
+      : sortedChatSessions;
+
+    if (!keyword) {
+      return baseSessions;
+    }
+
+    return baseSessions.filter((session) => {
+      const title = String(session.title || '').toLowerCase();
+      const preview = String(session.preview || '').toLowerCase();
+      const firstQuestion = getFirstUserQuestion(session).toLowerCase();
+      return title.includes(keyword) || preview.includes(keyword) || firstQuestion.includes(keyword);
+    });
+  }, [historySearchKeyword, historyView, sortedChatSessions]);
+  const groupedChatSessions = useMemo(() => (
+    groupChatSessionsByDate(filteredChatSessions)
+  ), [filteredChatSessions]);
+  const activeWebSearchPanel = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role !== 'assistant' || !message.webSearch || !expandedWebSearchIds.has(message.id)) {
+        continue;
+      }
+
+      return {
+        messageId: message.id,
+        query: message.webSearch.query || '当前问题',
+        status: message.webSearch.status || 'done',
+        count: Number(message.webSearch.count || 0),
+        message: message.webSearch.message || '',
+        sources: Array.isArray(message.webSearch.sources) ? message.webSearch.sources : [],
+      };
+    }
+
+    return null;
+  }, [messages, expandedWebSearchIds]);
+  const drawerPixelWidth = typeof activeDrawerWidth === 'number' ? activeDrawerWidth : viewportWidth;
+  const webSearchPanelWidth = isDesktop
+    ? Math.min(380, Math.max(300, viewportWidth - drawerPixelWidth - 34))
+    : Math.max(280, viewportWidth - 24);
+  const shouldShowWebSearchPanel = Boolean(activeWebSearchPanel) && isOpen && !isHistoryModalOpen;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -256,6 +667,13 @@ const AIChatWidget = () => {
     window.addEventListener('resize', syncViewportWidth);
     return () => window.removeEventListener('resize', syncViewportWidth);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsHistoryModalOpen(false);
+      setHistorySearchKeyword('');
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     setDrawerWidth((currentWidth) => clampDrawerWidth(currentWidth, viewportWidth));
@@ -275,6 +693,69 @@ const AIChatWidget = () => {
     window.localStorage.setItem(AI_DRAWER_WIDTH_KEY, String(Math.round(drawerWidth)));
   }, [drawerWidth]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(AI_WEB_SEARCH_AUTO_EXPAND_KEY, autoExpandWebSearch ? 'true' : 'false');
+  }, [autoExpandWebSearch]);
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      message.warning('当前浏览器不支持语音输入');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US'; // 默认英语，可以识别带口音的英语
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        }
+      }
+      if (finalTranscript) {
+        setDraft(prev => prev + (prev ? ' ' : '') + finalTranscript);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
+      setIsRecording(false);
+      if (event.error !== 'no-speech') {
+        message.error('语音识别出错: ' + event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    try {
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsRecording(true);
+      message.info('开始语音输入');
+    } catch (err) {
+      console.error(err);
+      setIsRecording(false);
+    }
+  }, [isRecording]);
+
   const handleScroll = () => {
     const container = scrollRef.current;
     if (!container) return;
@@ -293,8 +774,8 @@ const AIChatWidget = () => {
     const wasJustOpened = isOpen && !lastOpenRef.current;
     lastOpenRef.current = isOpen;
 
-    // Force scroll to bottom when newly opened, or when sending a message
-    if (wasJustOpened || isSending) {
+    // Force scroll to bottom when newly opened
+    if (wasJustOpened) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       isNearBottomRef.current = true;
       return;
@@ -326,6 +807,27 @@ const AIChatWidget = () => {
       return changed ? next : prev;
     });
   }, [messages]);
+
+  useEffect(() => {
+    if (!autoExpandWebSearch || !isOpen || isHistoryModalOpen) {
+      return;
+    }
+
+    const searchingMessage = [...messages]
+      .reverse()
+      .find((message) => (
+        message?.role === 'assistant'
+        && message.webSearch?.status === 'searching'
+        && !autoExpandedWebSearchRef.current.has(message.id)
+      ));
+
+    if (!searchingMessage) {
+      return;
+    }
+
+    autoExpandedWebSearchRef.current.add(searchingMessage.id);
+    setExpandedWebSearchIds(new Set([searchingMessage.id]));
+  }, [autoExpandWebSearch, isOpen, isHistoryModalOpen, messages]);
 
   useEffect(() => {
     if (!isResizingDrawer || !isDesktop || typeof window === 'undefined') {
@@ -361,6 +863,7 @@ const AIChatWidget = () => {
   }, [isDesktop, isResizingDrawer]);
 
   const handleSend = async () => {
+    if (isSending) return;
     const trimmed = draft.trim();
     if (!trimmed) {
       return;
@@ -368,6 +871,92 @@ const AIChatWidget = () => {
 
     setDraft('');
     await sendMessage(trimmed);
+  };
+
+  const handleStopGeneration = () => {
+    stopGeneration();
+  };
+
+  const handleStartNewConversation = () => {
+    setDraft('');
+    startNewConversation();
+    setIsHistoryModalOpen(false);
+  };
+
+  const handleLoadChatSession = (sessionId) => {
+    const loadedSession = loadChatSession(sessionId);
+    if (loadedSession) {
+      setDraft('');
+      setIsHistoryModalOpen(false);
+    }
+  };
+
+  const handleExportChatSession = (session) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+
+    const aiAvatarSrc = new URL('/ai-avatar.png', window.location.origin).href;
+    const userAvatarUrl = getAvatarSrc(user);
+    const userAvatarSrc = userAvatarUrl.startsWith('http') ? userAvatarUrl : new URL(userAvatarUrl, window.location.origin).href;
+
+    const blob = new Blob([buildChatExportHTML(session, userAvatarSrc, aiAvatarSrc)], { type: 'text/html;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = createSafeDownloadName(session.title);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    message.success('聊天记录已导出');
+  };
+
+  const openEditHistoryTitle = (session) => {
+    setEditingHistorySession(session);
+    setEditingHistoryTitle(session.title || '新聊天');
+  };
+
+  const handleSaveHistoryTitle = () => {
+    const nextTitle = editingHistoryTitle.trim();
+    if (!editingHistorySession || !nextTitle) {
+      message.warning('标题不能为空');
+      return;
+    }
+
+    updateChatSessionTitle(editingHistorySession.id, nextTitle);
+    setEditingHistorySession(null);
+    setEditingHistoryTitle('');
+    message.success('标题已更新');
+  };
+
+  const handleDeleteHistorySession = (session) => {
+    Modal.confirm({
+      title: '删除聊天记录',
+      content: `确定要删除「${session.title || '新聊天'}」吗？删除后无法恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        const deleted = deleteChatSession(session.id);
+        if (deleted) {
+          message.success('聊天记录已删除');
+        }
+      },
+    });
+  };
+
+  const handleToggleFavoriteSession = (session) => {
+    const nextFavorite = !session.favorite;
+    toggleChatSessionFavorite(session.id, nextFavorite);
+    message.success(nextFavorite ? '已添加到收藏' : '已取消收藏');
+  };
+
+  const handleHistoryCardKeyDown = (event, sessionId) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleLoadChatSession(sessionId);
+    }
   };
 
   const toggleReasoning = (messageId) => {
@@ -379,6 +968,15 @@ const AIChatWidget = () => {
         next.add(messageId);
       }
       return next;
+    });
+  };
+
+  const toggleWebSearchSources = (messageId) => {
+    setExpandedWebSearchIds((prev) => {
+      if (prev.has(messageId)) {
+        return new Set();
+      }
+      return new Set([messageId]);
     });
   };
 
@@ -406,7 +1004,7 @@ const AIChatWidget = () => {
     });
 
     if (nextSettings) {
-      message.success('AI 配置已保存');
+      message.success('Berry 配置已保存');
       closeSettingsModal();
     }
   };
@@ -414,7 +1012,7 @@ const AIChatWidget = () => {
   const handleResetSettings = async () => {
     const nextSettings = await resetAISettings();
     if (nextSettings) {
-      message.success('已恢复系统默认 AI 配置');
+      message.success('已恢复 Berry 默认配置');
       setBaseUrlDraft('');
       setModelDraft('');
       setModelDisplayNameDraft('');
@@ -471,7 +1069,7 @@ const AIChatWidget = () => {
       : chatContext?.page === 'mistake-book'
         ? '比如：帮我看看我这批词该怎么复习'
         : '直接输入你想问的问题';
-  const finalPlaceholder = canUseAI ? placeholder : '请先配置系统默认 AI，或在右上角填写自定义配置';
+  const finalPlaceholder = canUseAI ? placeholder : '请先配置 Berry，或在右上角填写自定义配置';
 
   return (
     <>
@@ -489,7 +1087,7 @@ const AIChatWidget = () => {
       >
         <FloatButton
           icon={<MessageOutlined style={{ color: '#ffffff' }} />}
-          tooltip="AI 助手 (可拖动)"
+          tooltip="Berry (可拖动)"
           onClick={handleButtonClick}
           style={{ 
             position: 'relative', 
@@ -505,6 +1103,7 @@ const AIChatWidget = () => {
       <style>{`
         .ai-assistant-drawer .ant-drawer-content {
           background: linear-gradient(135deg, #e9e2ee 0%, #cabacd 100%) !important;
+          overflow: hidden !important;
         }
         .ai-assistant-drawer .ant-drawer-header {
           background: transparent !important;
@@ -512,6 +1111,280 @@ const AIChatWidget = () => {
         }
         .ai-assistant-drawer .ant-drawer-body {
           background: transparent !important;
+          overflow: hidden !important;
+        }
+        .ai-chat-history-sheet {
+          animation: aiHistorySheetIn 180ms ease-out;
+          box-sizing: border-box;
+          max-width: 100%;
+        }
+        .ai-chat-history-search.ant-input-affix-wrapper {
+          height: 36px;
+          box-sizing: border-box;
+          border-radius: 12px !important;
+          border: 1px solid rgba(181, 144, 232, 0.32) !important;
+          background: rgba(248, 250, 252, 0.92) !important;
+          box-shadow: 0 0 0 3px rgba(181, 144, 232, 0.08) !important;
+        }
+        .ai-chat-history-search input {
+          color: #1f2937 !important;
+          font-weight: 600;
+          font-size: 12px !important;
+        }
+        .ai-chat-history-search input::placeholder {
+          color: #94a3b8 !important;
+        }
+        .ai-chat-history-tabs {
+          display: inline-flex;
+          align-items: center;
+          gap: 14px;
+          min-width: 0;
+        }
+        .ai-chat-history-tab {
+          position: relative;
+          border: none;
+          background: transparent;
+          padding: 0 0 8px;
+          color: #94a3b8;
+          cursor: pointer;
+          font-size: 16px;
+          line-height: 1.2;
+          font-weight: 800;
+        }
+        .ai-chat-history-tab:hover,
+        .ai-chat-history-tab--active {
+          color: #111827;
+        }
+        .ai-chat-history-tab--active::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: 3px;
+          border-radius: 999px;
+          background: #8a63d2;
+        }
+        .ai-chat-history-list {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(181, 144, 232, 0.45) rgba(226, 232, 240, 0.55);
+        }
+        .ai-chat-history-list::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ai-chat-history-list::-webkit-scrollbar-track {
+          background: rgba(226, 232, 240, 0.55);
+          border-radius: 999px;
+        }
+        .ai-chat-history-list::-webkit-scrollbar-thumb {
+          background: rgba(181, 144, 232, 0.5);
+          border-radius: 999px;
+        }
+        .ai-chat-history-section {
+          display: grid;
+          gap: 8px;
+        }
+        .ai-chat-history-section + .ai-chat-history-section {
+          margin-top: 12px;
+        }
+        .ai-chat-history-section-title {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          color: #94a3b8;
+          font-size: 13px;
+          font-weight: 800;
+          padding: 4px 2px;
+          background: rgba(255, 255, 255, 0.96);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+        .ai-chat-history-card {
+          box-sizing: border-box;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          text-align: left;
+          border-radius: 14px;
+          border: 1px solid rgba(226, 232, 240, 0.86);
+          background: rgba(248, 250, 252, 0.92);
+          padding: 12px 14px;
+          cursor: pointer;
+          display: grid;
+          gap: 6px;
+          color: inherit;
+          outline: none;
+          overflow: hidden;
+          transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+        .ai-chat-history-card:hover,
+        .ai-chat-history-card:focus-visible {
+          border-color: rgba(181, 144, 232, 0.36);
+          background: #ffffff;
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+        }
+        .ai-chat-history-card--active {
+          border-color: rgba(181, 144, 232, 0.42);
+          background: rgba(181, 144, 232, 0.15);
+          box-shadow: 0 10px 22px rgba(181, 144, 232, 0.12);
+        }
+        .ai-chat-history-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          min-width: 0;
+        }
+        .ai-chat-history-card-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          flex: none;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 160ms ease;
+        }
+        .ai-chat-history-card:hover .ai-chat-history-card-actions,
+        .ai-chat-history-card:focus-within .ai-chat-history-card-actions {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        @media (hover: none) {
+          .ai-chat-history-card-actions {
+            opacity: 1;
+            pointer-events: auto;
+          }
+        }
+        .ai-chat-history-more-menu .ant-dropdown-menu {
+          padding: 10px !important;
+          border-radius: 18px !important;
+          min-width: 170px;
+          box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2) !important;
+        }
+        .ai-chat-history-more-menu .ant-dropdown-menu-item {
+          border-radius: 12px !important;
+          padding: 10px 12px !important;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .ai-web-search-panel {
+          animation: aiWebSearchPanelIn 180ms ease-out;
+          box-sizing: border-box;
+          color: #1f2937;
+        }
+        .ai-web-search-panel-list {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(181, 144, 232, 0.45) rgba(255, 255, 255, 0.5);
+        }
+        .ai-web-search-panel-list::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ai-web-search-panel-list::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.5);
+          border-radius: 999px;
+        }
+        .ai-web-search-panel-list::-webkit-scrollbar-thumb {
+          background: rgba(181, 144, 232, 0.5);
+          border-radius: 999px;
+        }
+        .ai-web-search-result {
+          display: grid;
+          grid-template-columns: 30px minmax(0, 1fr);
+          gap: 10px;
+          padding: 14px 0;
+          color: inherit;
+          text-decoration: none;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.38);
+          min-width: 0;
+        }
+        .ai-web-search-result:hover .ai-web-search-result-title {
+          color: #5b21b6;
+        }
+        .ai-web-search-result-badge {
+          width: 22px;
+          height: 22px;
+          border-radius: 7px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #ffffff;
+          font-size: 11px;
+          font-weight: 900;
+          line-height: 1;
+          margin-top: 2px;
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+        }
+        .ai-web-search-result-meta {
+          display: block;
+          min-width: 0;
+          color: rgba(71, 85, 105, 0.72);
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.35;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .ai-web-search-result-title {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          color: #1f2937;
+          font-size: 15px;
+          line-height: 1.55;
+          font-weight: 700;
+          margin-top: 5px;
+          overflow-wrap: anywhere;
+          transition: color 160ms ease;
+        }
+        .ai-chat-icon-button.ant-btn {
+          width: 30px;
+          height: 30px;
+          padding: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent !important;
+          border-color: transparent !important;
+          box-shadow: none !important;
+          border-radius: 10px;
+          transition: color 160ms ease, opacity 160ms ease, transform 160ms ease;
+        }
+        .ai-chat-icon-button.ant-btn:not(:disabled):hover {
+          background: transparent !important;
+          transform: translateY(-1px);
+          opacity: 0.82;
+        }
+        .ai-chat-icon-button.ant-btn:disabled {
+          background: transparent !important;
+          border-color: transparent !important;
+          opacity: 0.38;
+        }
+        .ai-chat-stop-button.ant-btn:not(:disabled):hover,
+        .ai-chat-stop-button.ant-btn:not(:disabled):focus-visible {
+          background: #7f5af0 !important;
+          transform: translateY(-1px);
+        }
+        @keyframes aiHistorySheetIn {
+          from {
+            opacity: 0;
+            transform: translateY(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes aiWebSearchPanelIn {
+          from {
+            opacity: 0;
+            transform: translateX(14px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
         }
       `}</style>
 
@@ -524,7 +1397,7 @@ const AIChatWidget = () => {
               src="/ai-avatar.png"
               size={32}
               previewable={true}
-              previewTitle="IELTS AI 助手"
+              previewTitle="Berry"
               style={{
                 background: 'transparent',
                 boxShadow: 'none',
@@ -537,7 +1410,7 @@ const AIChatWidget = () => {
               letterSpacing: '0.5px',
               color: '#2e1065'
             }}>
-              IELTS AI 助手
+              Berry
             </span>
           </Space>
         )}
@@ -591,14 +1464,15 @@ const AIChatWidget = () => {
             padding: 0,
             position: 'relative',
             background: 'transparent',
+            overflow: 'hidden',
           },
         }}
       >
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', minWidth: 0, overflow: 'hidden' }}>
           {isDesktop && (
             <button
               type="button"
-              aria-label="拖拽调整 AI 助手宽度"
+              aria-label={isHistoryModalOpen ? '拖拽调整聊天历史宽度' : '拖拽调整 Berry 宽度'}
               onPointerDown={startResizingDrawer}
               style={{
                 position: 'absolute',
@@ -610,7 +1484,7 @@ const AIChatWidget = () => {
                 border: 'none',
                 background: 'transparent',
                 cursor: 'col-resize',
-                zIndex: 20,
+                zIndex: 70,
               }}
             >
               <span
@@ -660,10 +1534,12 @@ const AIChatWidget = () => {
             style={{
               flex: 1,
               overflowY: 'auto',
+              overflowX: 'hidden',
               padding: '20px 16px',
               display: 'flex',
               flexDirection: 'column',
               gap: 18,
+              minWidth: 0,
             }}
           >
             {messages.length === 0 ? (
@@ -681,7 +1557,7 @@ const AIChatWidget = () => {
                   src="/ai-avatar.png"
                   size={64}
                   previewable={true}
-                  previewTitle="IELTS AI 助手"
+                  previewTitle="Berry"
                   style={{
                     background: 'transparent',
                     marginBottom: 20,
@@ -690,10 +1566,10 @@ const AIChatWidget = () => {
                   }}
                 />
                 <Title level={4} style={{ margin: '0 0 8px 0', color: '#1e293b', fontWeight: 800 }}>
-                  IELTS 智能学习助手
+                  Berry
                 </Title>
                 <Text style={{ fontSize: 13, color: '#64748b', maxWidth: 280, marginBottom: 32 }}>
-                  你好！我是你的专属 AI 助手，可以为你解答词汇用法、语法搭配，或提供高效的备考建议。
+                  你好！我是 Berry，可以为你解答词汇用法、语法搭配，或提供高效的备考建议。
                 </Text>
                 
                 <div style={{
@@ -777,6 +1653,11 @@ const AIChatWidget = () => {
                 const isUser = message.role === 'user';
                 const hasReasoning = Boolean(message.reasoning);
                 const isReasoningExpanded = hasReasoning && (!message.reasoningComplete || expandedReasoningIds.has(message.id));
+                const webSearchState = message.webSearch;
+                const hasWebSearch = !isUser && Boolean(webSearchState);
+                const isWebSearchExpanded = expandedWebSearchIds.has(message.id);
+                const searchSources = Array.isArray(webSearchState?.sources) ? webSearchState.sources : [];
+                const canOpenSearchSources = Boolean(webSearchState);
 
                 return (
                   <div
@@ -786,6 +1667,8 @@ const AIChatWidget = () => {
                       flexDirection: 'column',
                       gap: 6,
                       width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
                       alignItems: isUser ? 'flex-end' : 'flex-start',
                     }}
                   >
@@ -806,7 +1689,7 @@ const AIChatWidget = () => {
                           src="/ai-avatar.png"
                           size={20}
                           previewable={true}
-                          previewTitle="IELTS AI 助手"
+                          previewTitle="Berry"
                           style={{
                             background: 'transparent',
                             border: 'none',
@@ -816,7 +1699,7 @@ const AIChatWidget = () => {
                         />
                       )}
                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
-                        {isUser ? (user?.username || '你') : 'IELTS AI 助手'}
+                        {isUser ? (user?.username || '你') : 'Berry'}
                       </span>
                     </div>
 
@@ -825,11 +1708,16 @@ const AIChatWidget = () => {
                       style={{
                         maxWidth: '100%',
                         width: isUser ? 'auto' : '100%',
+                        minWidth: 0,
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
                         borderRadius: '12px',
                         padding: '12px 14px',
                         whiteSpace: 'pre-wrap',
-                        lineHeight: 1.7,
-                        fontSize: '14px',
+                        overflowWrap: 'anywhere',
+                        wordBreak: 'break-word',
+                        lineHeight: 1.6,
+                        fontSize: isUser ? '12px' : '13px',
                         boxShadow: isUser
                           ? '0 6px 16px rgba(181, 144, 232, 0.08)'
                           : '0 4px 12px rgba(15, 23, 42, 0.02)',
@@ -837,14 +1725,108 @@ const AIChatWidget = () => {
                       }}
                     >
                       {isUser ? (
-                        <Text style={{ color: '#ffffff' }}>
+                        <Text style={{ color: '#ffffff', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
                           {message.content}
                         </Text>
                       ) : (
-                        <div style={{ display: 'grid', gap: 10 }}>
+                        <div style={{ display: 'grid', gap: 10, minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+                          {hasWebSearch && (
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: 8,
+                                minWidth: 0,
+                                maxWidth: '100%',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#64748b', fontSize: 12, fontWeight: 700, minWidth: 0 }}>
+                                <GlobalOutlined style={{ color: '#8a63d2', fontSize: 14, flex: 'none' }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  Bocha Searching: {webSearchState.query || '当前问题'}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (canOpenSearchSources) {
+                                    toggleWebSearchSources(message.id);
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 10,
+                                  width: '100%',
+                                  minWidth: 0,
+                                  boxSizing: 'border-box',
+                                  border: '1px solid rgba(148, 163, 184, 0.14)',
+                                  borderRadius: 16,
+                                  padding: '10px 12px',
+                                  background: webSearchState.status === 'error'
+                                    ? 'rgba(254, 242, 242, 0.86)'
+                                    : 'rgba(15, 23, 42, 0.04)',
+                                  color: '#1f2937',
+                                  cursor: canOpenSearchSources ? 'pointer' : 'default',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                  <span style={{ fontSize: 14, fontWeight: 800, color: webSearchState.status === 'error' ? '#b91c1c' : '#1f2937' }}>
+                                    {webSearchState.status === 'searching'
+                                      ? '正在搜索网络来源'
+                                      : webSearchState.status === 'error'
+                                        ? '联网搜索未完成'
+                                        : `基于 ${webSearchState.count || 0} 个搜索来源`}
+                                  </span>
+                                  {searchSources.length > 0 && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 2, flex: 'none' }}>
+                                      {searchSources.slice(0, 5).map((source, sourceIndex) => (
+                                        <span
+                                          key={`${source.url || source.title || sourceIndex}-${sourceIndex}`}
+                                          title={source.title || `来源 ${sourceIndex + 1}`}
+                                          style={{
+                                            width: 18,
+                                            height: 18,
+                                            marginLeft: sourceIndex === 0 ? 0 : -6,
+                                            borderRadius: '50%',
+                                            border: '2px solid rgba(255, 255, 255, 0.92)',
+                                            background: SOURCE_BADGE_COLORS[sourceIndex % SOURCE_BADGE_COLORS.length],
+                                            color: '#ffffff',
+                                            fontSize: 9,
+                                            fontWeight: 800,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            lineHeight: 1,
+                                          }}
+                                        >
+                                          {getSourceBadgeText(source, sourceIndex)}
+                                        </span>
+                                      ))}
+                                    </span>
+                                  )}
+                                </span>
+                                {canOpenSearchSources && (
+                                  isWebSearchExpanded
+                                    ? <CloseOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
+                                    : <RightOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
+                                )}
+                              </button>
+                              {webSearchState.message && (
+                                <div style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.6 }}>
+                                  {webSearchState.message}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {hasReasoning && (
                             <div
                               style={{
+                                minWidth: 0,
+                                maxWidth: '100%',
+                                boxSizing: 'border-box',
                                 borderRadius: 12,
                                 overflow: 'hidden',
                                 border: '1px solid rgba(181, 144, 232, 0.15)',
@@ -866,11 +1848,12 @@ const AIChatWidget = () => {
                                   padding: '8px 10px',
                                   cursor: 'pointer',
                                   color: '#8a63d2',
+                                  minWidth: 0,
                                 }}
                               >
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, minWidth: 0 }}>
                                   <ThunderboltFilled style={{ color: '#b590e8', fontSize: 11 }} />
-                                  {message.reasoningComplete ? '深度思考过程' : 'AI 正在思考...'}
+                                  {message.reasoningComplete ? '深度思考过程' : 'Berry 正在思考...'}
                                 </span>
                                 {isReasoningExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
                               </button>
@@ -879,6 +1862,11 @@ const AIChatWidget = () => {
                                   style={{
                                     padding: '0 10px 10px',
                                     borderTop: '1px solid rgba(181, 144, 232, 0.08)',
+                                    minWidth: 0,
+                                    maxWidth: '100%',
+                                    maxHeight: '180px',
+                                    overflowY: 'auto',
+                                    overflowX: 'hidden',
                                   }}
                                 >
                                   <AIMarkdownContent content={message.reasoning} tone="subtle" />
@@ -888,13 +1876,39 @@ const AIChatWidget = () => {
                           )}
 
                           {message.content && (
-                            <AIMarkdownContent content={message.content} tone="default" />
+                            <>
+                              <AIMarkdownContent content={message.content} tone="default" />
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      window.speechSynthesis.cancel();
+                                      const utterance = new SpeechSynthesisUtterance(message.content.replace(/[*_#`~>]/g, ''));
+                                      window.speechSynthesis.speak(utterance);
+                                    } catch {
+                                      console.warn('Speech synthesis not available');
+                                    }
+                                  }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 4,
+                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                    color: '#94a3b8', fontSize: 11, fontWeight: 500, padding: '4px 8px', borderRadius: 4, transition: 'all 0.2s'
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                  <SoundOutlined style={{ fontSize: 12 }} /> 朗读
+                                </button>
+                              </div>
+                            </>
                           )}
 
                           {!message.content && message.streaming && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b590e8', fontSize: 13, fontWeight: 500 }}>
                               <span className="dot-flashing-loader" style={{ color: '#b590e8' }} />
-                              <span>AI 正在思考解答</span>
+                              <span>Berry 正在思考解答</span>
                             </div>
                           )}
 
@@ -929,35 +1943,76 @@ const AIChatWidget = () => {
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)'
           }}>
-            {shouldShowModelBox && (
-              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Select
-                  value={selectedModel}
-                  options={modelOptions}
-                  onChange={selectModel}
-                  disabled={isSending || !canUseAI || modelCount <= 1}
-                  popupMatchSelectWidth={false}
-                  suffixIcon={<DownOutlined style={{ color: '#b590e8', fontSize: 11 }} />}
-                  style={{ minWidth: 200, maxWidth: '100%' }}
-                  placeholder="选择模型"
-                  styles={{
-                    popup: {
-                      root: {
-                        borderRadius: 16,
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flex: 1, minWidth: 0 }}>
+                {shouldShowModelBox && (
+                  <Select
+                    value={selectedModel}
+                    options={modelOptions}
+                    onChange={selectModel}
+                    disabled={isSending || !canUseAI || modelCount <= 1}
+                    popupMatchSelectWidth={false}
+                    suffixIcon={<DownOutlined style={{ color: '#b590e8', fontSize: 11 }} />}
+                    style={{ minWidth: 0, width: 200, maxWidth: '100%' }}
+                    placeholder="选择模型"
+                    styles={{
+                      popup: {
+                        root: {
+                          borderRadius: 16,
+                        },
                       },
-                    },
-                  }}
-                  className="ai-chat-model-select"
-                  popupClassName="ai-chat-model-popup"
-                  variant="borderless"
-                />
+                    }}
+                    className="ai-chat-model-select"
+                    popupClassName="ai-chat-model-popup"
+                    variant="borderless"
+                  />
+                )}
               </div>
-            )}
+
+              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, flex: 'none' }}>
+                <Tooltip title="聊天历史">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<ClockCircleOutlined />}
+                    onClick={() => {
+                      setHistorySearchKeyword('');
+                      setIsHistoryModalOpen((open) => !open);
+                    }}
+                    aria-label="聊天历史"
+                    className="ai-chat-icon-button"
+                    style={{
+                      color: '#334155',
+                      flex: 'none',
+                    }}
+                  />
+                </Tooltip>
+                <Tooltip title="新聊天">
+                  <Button
+                    size="small"
+                    type="text"
+                    onClick={() => void handleStartNewConversation()}
+                    aria-label="新聊天"
+                    className="ai-chat-icon-button"
+                    style={{
+                      color: '#7f5af0',
+                      flex: 'none',
+                    }}
+                    icon={(
+                      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16 }}>
+                        <MessageOutlined style={{ fontSize: 15 }} />
+                        <PlusOutlined style={{ position: 'absolute', fontSize: 8, right: -1, bottom: -1 }} />
+                      </span>
+                    )}
+                  />
+                </Tooltip>
+              </div>
+            </div>
             {shouldShowModelBox && (
               <style>{`
                 .ai-chat-model-select .ant-select-selector {
-                  min-height: 32px !important;
-                  padding: 0 12px !important;
+                  min-height: 24px !important;
+                  padding: 0 8px !important;
                   border-radius: 12px !important;
                   background: rgba(181, 144, 232, 0.06) !important;
                   border: 1px solid rgba(181, 144, 232, 0.12) !important;
@@ -966,9 +2021,9 @@ const AIChatWidget = () => {
                 .ai-chat-model-select .ant-select-selection-item {
                   display: flex !important;
                   align-items: center !important;
-                  gap: 6px !important;
-                  font-size: 13px !important;
-                  font-weight: 700 !important;
+                  gap: 4px !important;
+                  font-size: 9px !important;
+                  font-weight: 500 !important;
                   color: #8a63d2 !important;
                 }
                 .ai-chat-model-select.ant-select-disabled .ant-select-selector {
@@ -1051,42 +2106,635 @@ const AIChatWidget = () => {
                   color: '#1e293b',
                 }}
               />
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
                 borderTop: '1px solid rgba(241, 245, 249, 0.8)',
+                marginTop: 4,
                 paddingTop: 8
               }}>
-                <Text style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Enter 发送，Shift + Enter 换行
-                </Text>
-                <Button
-                  type="primary"
-                  shape="circle"
-                  icon={<SendOutlined style={{ fontSize: 12 }} />}
-                  onClick={() => void handleSend()}
-                  disabled={!draft.trim() || isSending || isSettingsSaving || !canUseAI}
-                  style={{ 
-                    background: draft.trim() && !isSending && !isSettingsSaving ? 'linear-gradient(135deg, #d6c1f9 0%, #b590e8 100%)' : '#f1f5f9',
-                    border: 'none',
-                    color: draft.trim() && !isSending && !isSettingsSaving ? '#ffffff' : '#94a3b8',
-                    width: 30,
-                    height: 30,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: draft.trim() && !isSending && !isSettingsSaving ? '0 4px 10px rgba(181, 144, 232, 0.2)' : 'none'
-                  }}
-                />
+                {shouldShowControlRow ? (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Tooltip title={aiSettings.thinkingEnabled ? '思考 开' : '思考 关'}>
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<BulbOutlined />}
+                        onClick={() => setThinkingEnabled(!aiSettings.thinkingEnabled)}
+                        disabled={isSending || !canUseAI}
+                        aria-label={aiSettings.thinkingEnabled ? '关闭思考' : '开启思考'}
+                        className="ai-chat-icon-button"
+                        style={{
+                          color: aiSettings.thinkingEnabled ? '#8a63d2' : 'rgba(138, 99, 210, 0.34)',
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="网络搜索">
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<GlobalOutlined />}
+                        onClick={() => setWebSearchEnabled(!aiSettings.webSearchEnabled)}
+                        disabled={isSending || !canUseAI}
+                        aria-label={aiSettings.webSearchEnabled ? '关闭网络搜索' : '开启网络搜索'}
+                        className="ai-chat-icon-button"
+                        style={{
+                          color: aiSettings.webSearchEnabled ? '#0ea5e9' : 'rgba(14, 165, 233, 0.34)',
+                        }}
+                      />
+                    </Tooltip>
+                    {aiSettings.webSearchEnabled && (
+                      <Dropdown
+                        trigger={['click']}
+                        placement="topLeft"
+                        menu={{
+                          selectable: true,
+                          selectedKeys: [selectedWebSearchFreshness],
+                          items: WEB_SEARCH_FRESHNESS_OPTIONS.map((option) => ({
+                            key: option.key,
+                            label: option.label,
+                          })),
+                          onClick: ({ key }) => setWebSearchFreshness(key),
+                        }}
+                      >
+                        <Tooltip title={`搜索范围：${selectedWebSearchFreshnessLabel}`}>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CaretUpOutlined />}
+                            disabled={isSending || !canUseAI}
+                            aria-label={`选择网络搜索时间范围，当前为${selectedWebSearchFreshnessLabel}`}
+                            className="ai-chat-icon-button"
+                            style={{
+                              color: '#0ea5e9',
+                            }}
+                          />
+                        </Tooltip>
+                      </Dropdown>
+                    )}
+                    <Tooltip title={isRecording ? '停止录音' : '语音输入'}>
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<AudioOutlined />}
+                        onClick={toggleRecording}
+                        className="ai-chat-icon-button"
+                        style={{
+                          color: isRecording ? '#ef4444' : 'rgba(148, 163, 184, 0.8)',
+                          animation: isRecording ? 'pulse 2s infinite' : 'none'
+                        }}
+                      />
+                    </Tooltip>
+                  </div>
+                ) : (
+                  <span />
+                )}
+                {isSending ? (
+                  <Tooltip title="停止">
+                    <Button
+                      type="text"
+                      shape="circle"
+                      onClick={handleStopGeneration}
+                      aria-label="停止"
+                      className="ai-chat-stop-button"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        minWidth: 36,
+                        borderRadius: '50%',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
+                        border: 'none',
+                        background: '#8a63d2',
+                        boxShadow: '0 10px 22px rgba(138, 99, 210, 0.28)',
+                      }}
+                      icon={(
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: 3,
+                            background: '#ffffff',
+                            display: 'block',
+                          }}
+                        />
+                      )}
+                    />
+                  </Tooltip>
+                ) : (
+                  <Button
+                    type="text"
+                    shape="circle"
+                    icon={<SendOutlined style={{ fontSize: 12 }} />}
+                    onClick={() => void handleSend()}
+                    disabled={!draft.trim() || isSettingsSaving || !canUseAI}
+                    className="ai-chat-icon-button"
+                    style={{
+                      color: draft.trim() && !isSettingsSaving ? '#8a63d2' : '#94a3b8',
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
+
+          {isHistoryModalOpen && (
+            <div
+              className="ai-chat-history-sheet"
+              style={{
+                position: 'absolute',
+                insetInlineStart: 0,
+                insetInlineEnd: 0,
+                bottom: 0,
+                height: '72%',
+                maxHeight: 620,
+                minHeight: 320,
+                width: '100%',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+                borderRadius: '22px 22px 0 0',
+                padding: '10px 18px 18px',
+                background: 'rgba(255, 255, 255, 0.98)',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+                borderBottom: 'none',
+                boxShadow: '0 -24px 55px rgba(15, 23, 42, 0.22)',
+                backdropFilter: 'blur(18px)',
+                WebkitBackdropFilter: 'blur(18px)',
+                color: '#1f2937',
+                zIndex: 45,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 42,
+                  height: 4,
+                  borderRadius: 999,
+                  background: 'rgba(148, 163, 184, 0.42)',
+                  alignSelf: 'center',
+                  marginBottom: 2,
+                  flex: 'none',
+                }}
+              />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flex: 'none' }}>
+                <div className="ai-chat-history-tabs" role="tablist" aria-label="聊天历史分类">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={historyView === 'all'}
+                    className={`ai-chat-history-tab ${historyView === 'all' ? 'ai-chat-history-tab--active' : ''}`}
+                    onClick={() => setHistoryView('all')}
+                  >
+                    全部
+                    <span style={{ marginLeft: 5, fontSize: 11, color: 'inherit', opacity: 0.64 }}>
+                      {sortedChatSessions.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={historyView === 'favorites'}
+                    className={`ai-chat-history-tab ${historyView === 'favorites' ? 'ai-chat-history-tab--active' : ''}`}
+                    onClick={() => setHistoryView('favorites')}
+                  >
+                    我的收藏
+                    <span style={{ marginLeft: 5, fontSize: 11, color: 'inherit', opacity: 0.64 }}>
+                      {favoriteChatSessionCount}
+                    </span>
+                  </button>
+                </div>
+                <Tooltip title="关闭">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloseOutlined />}
+                    onClick={() => setIsHistoryModalOpen(false)}
+                    aria-label="关闭聊天历史"
+                    style={{
+                      width: 32,
+                      height: 32,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#334155',
+                      borderRadius: 12,
+                    }}
+                  />
+                </Tooltip>
+              </div>
+
+              <Input
+                className="ai-chat-history-search"
+                prefix={<SearchOutlined style={{ color: '#64748b', fontSize: 14 }} />}
+                placeholder="搜索"
+                allowClear
+                value={historySearchKeyword}
+                onChange={(event) => setHistorySearchKeyword(event.target.value)}
+              />
+
+              <div
+                className="ai-chat-history-list"
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  overscrollBehavior: 'contain',
+                  scrollbarGutter: 'stable',
+                  display: 'grid',
+                  alignContent: 'start',
+                  gap: 8,
+                  paddingRight: 4,
+                  touchAction: 'pan-y',
+                }}
+              >
+                {filteredChatSessions.length === 0 ? (
+                  <div style={{ padding: '22px 0' }}>
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={(
+                        <span style={{ color: '#94a3b8' }}>
+                          {historySearchKeyword.trim()
+                            ? '没有匹配的聊天'
+                            : historyView === 'favorites'
+                              ? '暂无收藏聊天'
+                              : '暂无聊天历史'}
+                        </span>
+                      )}
+                    />
+                  </div>
+                ) : (
+                  groupedChatSessions.map((group) => (
+                    <div className="ai-chat-history-section" key={group.key}>
+                      <div className="ai-chat-history-section-title">
+                        {group.label}
+                      </div>
+                      {group.sessions.map((session) => {
+                        const isActiveSession = session.id === activeChatSessionId;
+                        const firstQuestion = getFirstUserQuestion(session);
+                        const userMessageCount = Array.isArray(session.messages)
+                          ? session.messages.filter((messageItem) => messageItem.role === 'user').length
+                          : 0;
+                        const timeLabel = formatChatSessionTime(session.updatedAt || session.createdAt);
+                        const moreMenuItems = [
+                          {
+                            key: 'export',
+                            icon: <ExportOutlined />,
+                            label: '导出',
+                          },
+                          {
+                            key: 'edit-title',
+                            icon: <EditOutlined />,
+                            label: '编辑标题',
+                          },
+                          {
+                            key: 'delete',
+                            danger: true,
+                            icon: <DeleteOutlined />,
+                            label: '删除',
+                          },
+                        ];
+
+                        return (
+                          <div
+                            key={session.id}
+                            role="button"
+                            tabIndex={0}
+                            className={`ai-chat-history-card ${isActiveSession ? 'ai-chat-history-card--active' : ''}`}
+                            onClick={() => handleLoadChatSession(session.id)}
+                            onKeyDown={(event) => handleHistoryCardKeyDown(event, session.id)}
+                          >
+                            <div className="ai-chat-history-card-top">
+                              <Text
+                                style={{ display: 'block', flex: 1, fontSize: 13, fontWeight: 800, color: '#111827', minWidth: 0 }}
+                                ellipsis={{ tooltip: session.title }}
+                              >
+                                {session.title || '新聊天'}
+                              </Text>
+                              <div className="ai-chat-history-card-actions">
+                                <Dropdown
+                                  trigger={['click']}
+                                  placement="bottomRight"
+                                  overlayClassName="ai-chat-history-more-menu"
+                                  menu={{
+                                    items: moreMenuItems,
+                                    onClick: ({ key, domEvent }) => {
+                                      domEvent?.stopPropagation();
+                                      if (key === 'export') {
+                                        handleExportChatSession(session);
+                                      } else if (key === 'edit-title') {
+                                        openEditHistoryTitle(session);
+                                      } else if (key === 'delete') {
+                                        handleDeleteHistorySession(session);
+                                      }
+                                    },
+                                  }}
+                                >
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    className="ai-chat-icon-button"
+                                    icon={<EllipsisOutlined style={{ fontSize: 16 }} />}
+                                    aria-label="更多操作"
+                                    onClick={(event) => event.stopPropagation()}
+                                    style={{ color: '#64748b' }}
+                                  />
+                                </Dropdown>
+                                <Tooltip title={session.favorite ? '取消收藏' : '添加到收藏'}>
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    className="ai-chat-icon-button"
+                                    icon={session.favorite ? <StarFilled style={{ fontSize: 16 }} /> : <StarOutlined style={{ fontSize: 16 }} />}
+                                    aria-label={session.favorite ? '取消收藏' : '添加到收藏'}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleToggleFavoriteSession(session);
+                                    }}
+                                    style={{ color: session.favorite ? '#8a63d2' : '#64748b' }}
+                                  />
+                                </Tooltip>
+                              </div>
+                            </div>
+                            <Text
+                              style={{ display: 'block', fontSize: 12, color: '#64748b', lineHeight: 1.6, minWidth: 0 }}
+                              ellipsis={{ tooltip: firstQuestion }}
+                            >
+                              {firstQuestion}
+                            </Text>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                              <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                                {timeLabel}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                                {userMessageCount > 0 ? `${userMessageCount} 条提问` : '未开始对话'}
+                              </Text>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </Drawer>
 
+      {shouldShowWebSearchPanel && (
+        <aside
+          className="ai-web-search-panel"
+          aria-label="网页搜索结果"
+          style={{
+            position: 'fixed',
+            top: isDesktop ? 22 : 74,
+            bottom: isDesktop ? 22 : 118,
+            right: isDesktop ? drawerPixelWidth + 14 : 12,
+            width: webSearchPanelWidth,
+            maxWidth: isDesktop ? `calc(100vw - ${drawerPixelWidth + 28}px)` : 'calc(100vw - 24px)',
+            zIndex: 1101,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            overflow: 'hidden',
+            borderRadius: 24,
+            background: 'linear-gradient(135deg, #e9e2ee 0%, #cabacd 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.42)',
+            boxShadow: '0 22px 70px rgba(88, 28, 135, 0.22)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '16px 20px 14px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.38)',
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <GlobalOutlined style={{ color: '#7f5af0', fontSize: 14, flex: 'none' }} />
+              <span style={{ fontSize: 16, lineHeight: 1.25, fontWeight: 900, color: '#2e1065' }}>
+                网页搜索
+              </span>
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flex: 'none' }}>
+              <button
+                type="button"
+                aria-pressed={autoExpandWebSearch}
+                onClick={() => setAutoExpandWebSearch((value) => !value)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 28,
+                  padding: 0,
+                  borderRadius: 999,
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#2e1065',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>自动展开搜索结果</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    width: 42,
+                    height: 24,
+                    borderRadius: 999,
+                    padding: 2,
+                    background: autoExpandWebSearch ? '#7f5af0' : 'rgba(148, 163, 184, 0.5)',
+                    boxShadow: autoExpandWebSearch
+                      ? '0 0 0 1px rgba(167, 139, 250, 0.28)'
+                      : '0 0 0 1px rgba(255, 255, 255, 0.45)',
+                    transition: 'background 160ms ease, box-shadow 160ms ease',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      transform: autoExpandWebSearch ? 'translateX(18px)' : 'translateX(0)',
+                      transition: 'transform 160ms ease',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.28)',
+                    }}
+                  />
+                </span>
+              </button>
+              <Button
+                type="text"
+                size="small"
+                className="ai-chat-icon-button"
+                icon={<CloseOutlined style={{ fontSize: 17 }} />}
+                aria-label="关闭网页搜索结果"
+                onClick={() => toggleWebSearchSources(activeWebSearchPanel.messageId)}
+                style={{
+                  color: '#5b21b6',
+                  flex: 'none',
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '12px 20px 0',
+              color: '#475569',
+              fontSize: 13,
+              fontWeight: 800,
+              minWidth: 0,
+            }}
+          >
+            <SearchOutlined style={{ color: '#7f5af0', fontSize: 14, flex: 'none' }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeWebSearchPanel.status === 'error'
+                ? '联网搜索未完成'
+                : `基于 ${activeWebSearchPanel.count || activeWebSearchPanel.sources.length || 0} 个搜索来源`}
+            </span>
+          </div>
+
+          {activeWebSearchPanel.message && (
+            <div
+              style={{
+                margin: '10px 20px 0',
+                borderRadius: 12,
+                padding: '9px 11px',
+                background: 'rgba(254, 242, 242, 0.82)',
+                border: '1px solid rgba(248, 113, 113, 0.22)',
+                color: '#b91c1c',
+                fontSize: 12,
+                lineHeight: 1.6,
+              }}
+            >
+              {activeWebSearchPanel.message}
+            </div>
+          )}
+
+          <div
+            className="ai-web-search-panel-list"
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: '8px 20px 18px',
+              minHeight: 0,
+            }}
+          >
+            {activeWebSearchPanel.sources.length > 0 ? (
+              activeWebSearchPanel.sources.map((source, sourceIndex) => {
+                const title = getSearchSourceTitle(source, sourceIndex);
+                const domain = getSearchSourceDomain(source);
+                const href = normalizeHistoryText(source.url);
+
+                return (
+                  <a
+                    key={`${href || title}-${sourceIndex}-panel`}
+                    className="ai-web-search-result"
+                    href={href || undefined}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={href || title}
+                    onClick={(event) => {
+                      if (!href) {
+                        event.preventDefault();
+                      }
+                    }}
+                  >
+                    <span
+                      className="ai-web-search-result-badge"
+                      style={{
+                        background: SOURCE_BADGE_COLORS[sourceIndex % SOURCE_BADGE_COLORS.length],
+                      }}
+                    >
+                      {getSourceBadgeText(source, sourceIndex)}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span className="ai-web-search-result-meta">
+                        {domain} · {sourceIndex + 1}
+                      </span>
+                      <span className="ai-web-search-result-title">
+                        {title}
+                      </span>
+                    </span>
+                  </a>
+                );
+              })
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  minHeight: 180,
+                  textAlign: 'center',
+                  color: '#64748b',
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  padding: '22px 8px',
+                }}
+              >
+                {activeWebSearchPanel.status === 'searching'
+                  ? '正在搜索网络来源...'
+                  : '暂时没有可展示的网页搜索结果'}
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
       <Modal
-        title="AI 配置"
+        title="编辑聊天标题"
+        open={Boolean(editingHistorySession)}
+        onOk={handleSaveHistoryTitle}
+        onCancel={() => {
+          setEditingHistorySession(null);
+          setEditingHistoryTitle('');
+        }}
+        okText="保存"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <Input
+          value={editingHistoryTitle}
+          maxLength={60}
+          showCount
+          autoFocus
+          placeholder="请输入聊天标题"
+          onChange={(event) => setEditingHistoryTitle(event.target.value)}
+          onPressEnter={handleSaveHistoryTitle}
+        />
+      </Modal>
+
+      <Modal
+        title="Berry 配置"
         open={isSettingsModalOpen}
         onCancel={closeSettingsModal}
         onOk={() => void handleSaveSettings()}
@@ -1098,8 +2746,8 @@ const AIChatWidget = () => {
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Text style={{ color: '#64748b', lineHeight: 1.7 }}>
             {aiSettings.systemConfigured
-              ? '系统默认 AI 已经可以直接使用。你也可以额外配置自己的模型；你的自定义配置和聊天记录将仅保存在当前浏览器本地，保护隐私。'
-              : '当前系统默认 AI 未配置。你可以填写自己的配置，自定义配置和聊天记录将仅保存在当前浏览器本地。'}
+              ? 'Berry 已经可以直接使用。你也可以额外配置自己的模型；你的自定义配置和聊天记录将仅保存在当前浏览器本地，保护隐私。'
+              : '当前 Berry 默认配置未完成。你可以填写自己的配置，自定义配置和聊天记录将仅保存在当前浏览器本地。'}
           </Text>
 
           <div>
@@ -1110,7 +2758,7 @@ const AIChatWidget = () => {
               prefix={<LinkOutlined style={{ color: '#94a3b8' }} />}
               value={baseUrlDraft}
               onChange={(event) => setBaseUrlDraft(event.target.value)}
-              placeholder="例如 https://api.openai.com/v1"
+              placeholder="例如: https://api.openai.com/v1"
               maxLength={300}
             />
           </div>
@@ -1122,7 +2770,7 @@ const AIChatWidget = () => {
             <Input
               value={modelDraft}
               onChange={(event) => setModelDraft(event.target.value)}
-              placeholder="例如 gpt-4o-mini"
+              placeholder="例如: gpt-5.5"
               maxLength={120}
             />
           </div>
@@ -1134,7 +2782,7 @@ const AIChatWidget = () => {
             <Input
               value={modelDisplayNameDraft}
               onChange={(event) => setModelDisplayNameDraft(event.target.value)}
-              placeholder="例如 深度思考模型"
+              placeholder="例如: gpt-5.5"
               maxLength={120}
             />
           </div>
@@ -1163,7 +2811,7 @@ const AIChatWidget = () => {
               loading={isTestingConnection}
               disabled={isSettingsSaving}
             >
-              测试当前生效配置
+             检查连接
             </Button>
             <Button
               icon={<ReloadOutlined />}

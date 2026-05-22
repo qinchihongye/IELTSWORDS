@@ -1,10 +1,16 @@
 # IELTS Words 数据库文档
 
+## 当前说明
+
+当前项目已经改为使用 `data/images` 作为配图的真实存储位置。数据库里的 `images` 表主要保留章节、分组、编号等元数据，`image_data` 字段目前只作为历史兼容字段，不再作为运行时图片来源。
+
+目前仓库会跟踪两个主库文件：`db/ielts_words.db` 和 `db/ielts_words_app.db`。运行时生成的 `*.db-wal`、`*.db-shm`、备份库和 `safe_*` 文件仍然保持忽略，不提交到 Git。
+
 ## 1. 表结构
 
 ### 1.1 images 表
 
-存储IELTS词汇配图的图片数据。
+存储IELTS词汇配图的元数据。当前运行时图片内容来自 `data/images`，数据库不再依赖 `image_data` 作为主要图片来源。
 
 | 字段名 | 类型 | 说明 | 约束 |
 |--------|------|------|------|
@@ -14,7 +20,7 @@
 | groupId | TEXT | 分组ID | NOT NULL |
 | groupTheme | TEXT | 分组主题 | NOT NULL |
 | 配图number | INTEGER | 配图编号(1-4) | NOT NULL |
-| image_data | BLOB | 图片二进制数据(PNG格式) | NOT NULL |
+| image_data | BLOB | 历史兼容字段，当前通常为空 | NOT NULL |
 | created_at | TIMESTAMP | 创建时间 | DEFAULT CURRENT_TIMESTAMP |
 
 **索引:**
@@ -44,14 +50,11 @@
 
 **说明:** 同一个单词可能出现在多个章节中，因此word字段不设置唯一约束。
 
-**重要:** 图片是按分组(groupId)生成的，不是按单词生成的。要查询某个单词对应的图片，需要：
-1. 先通过word查询该单词所属的chapterNo和groupId
-2. 再通过chapterNo和groupId查询images表获取该分组的配图
-3. 同一个分组(groupId)下的所有单词共享相同的配图
+**重要:** 图片是按分组(groupId)生成的，不是按单词生成的。当前查询图片内容时，应先通过 `chapterNo + groupId + 配图number` 定位本地文件，再由后端接口返回图片流；数据库仅用于保存该分组有哪些配图的元信息。
 
 ### 1.3 word_details 表
 
-存储单词的完整详细信息，包含xlsx文件中除配图外的所有字段。
+存储单词的完整详细信息，包含 xlsx 文件中除配图外的所有字段。
 
 | 字段名 | 类型 | 说明 | 约束 |
 |--------|------|------|------|
@@ -101,9 +104,9 @@ FROM images
 WHERE groupId = 'group1';
 ```
 
-#### 导出图片数据
+#### 导出图片元数据
 ```sql
-SELECT chapterNo, chapterName, groupId, groupTheme, 配图number, image_data
+SELECT chapterNo, chapterName, groupId, groupTheme, 配图number
 FROM images
 WHERE id = 1;
 ```
@@ -183,8 +186,7 @@ SELECT
     w.chapterName,
     w.groupId,
     w.groupTheme,
-    i.配图number,
-    i.image_data
+    i.配图number
 FROM words w
 JOIN images i ON w.chapterNo = i.chapterNo 
     AND w.groupId = i.groupId
@@ -266,12 +268,11 @@ WHERE candidateWords IS NOT NULL AND candidateWords != '';
 
 ### 2.5 word_details 与其他表的联合查询
 
-#### 查询单词的完整信息及配图
+#### 查询单词的完整信息及配图元信息
 ```sql
 SELECT 
     wd.*,
-    i.配图number,
-    i.image_data
+    i.配图number
 FROM word_details wd
 JOIN images i ON wd.chapterNo = i.chapterNo 
     AND wd.groupId = i.groupId
@@ -291,4 +292,9 @@ LEFT JOIN images i ON wd.chapterNo = i.chapterNo
     AND wd.groupId = i.groupId
 WHERE wd.word = 'atmosphere'
 ORDER BY i.配图number;
+```
+
+#### 查看某分组在本地文件中的实际配图
+```text
+data/images 目录下按 chapterNo / groupId / 配图number 命名存放。
 ```

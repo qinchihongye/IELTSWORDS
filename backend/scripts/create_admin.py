@@ -10,8 +10,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from app import models
-from app.auth import get_password_hash
+from app import crud, models, schemas
 from app.database import SessionLocal, ensure_runtime_schema
 from app.config.settings import DATABASE_URL
 
@@ -41,17 +40,12 @@ def create_admin_user(username: str, email: str, password: str, role: str = "sup
             print(f"❌ 邮箱 '{email}' 已被注册")
             return
 
-        hashed_password = get_password_hash(password)
-
-        admin_user = models.User(
-            username=username,
-            email=email,
-            hashed_password=hashed_password,
-            role=role,
-            is_active=True
+        admin_user = crud.create_user(
+            db,
+            schemas.UserCreate(username=username, email=email, password=password),
         )
-
-        db.add(admin_user)
+        admin_user.role = role
+        admin_user.is_active = True
         db.commit()
         db.refresh(admin_user)
 

@@ -245,7 +245,7 @@ const CustomBooks = () => {
                 去继续学习内置词汇
               </Button>
               <Button onClick={() => navigate('/home')}>
-                返回数据看板
+                返回学习中心
               </Button>
             </div>
           </div>

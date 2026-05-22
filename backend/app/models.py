@@ -2,7 +2,7 @@
 SQLAlchemy模型定义
 """
 
-from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, ForeignKey, CheckConstraint, Text, Boolean, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, ForeignKey, CheckConstraint, Text, Boolean, Index, UniqueConstraint, Float
 from sqlalchemy.sql import func
 from .database import Base
 from .avatar_storage import DEFAULT_BUILTIN_AVATAR_KEY
@@ -100,8 +100,15 @@ class LearningProgress(Base):
     difficulty_level = Column(Integer, default=3)  # 难度等级 1-5 (1=简单, 3=中等, 5=困难)
     is_mistake_marked = Column(Boolean, default=False)  # 是否标记为错题
 
+    # SM-2 算法核心字段
+    easiness_factor = Column(Float, default=2.5, nullable=False)
+    interval = Column(Integer, default=0, nullable=False)
+    repetitions = Column(Integer, default=0, nullable=False)
+
     __table_args__ = (
         CheckConstraint("status IN ('unlearned', 'learning', 'mastered')", name='check_status'),
+        Index('idx_user_word', 'user_id', 'word_id'),
+        Index('idx_user_status', 'user_id', 'status'),
     )
 
 class CheckInStreak(Base):
@@ -223,6 +230,12 @@ class CustomBookProgress(Base):
     review_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # 新增字段 - 用于复习模式
+    next_review_date = Column(DateTime, nullable=True)  # 下次复习日期
+    easiness_factor = Column(Float, default=2.5, nullable=False)
+    interval = Column(Integer, default=0, nullable=False)
+    repetitions = Column(Integer, default=0, nullable=False)
 
     __table_args__ = (
         CheckConstraint("status IN ('unlearned', 'learning', 'mastered')", name="check_custom_book_status"),

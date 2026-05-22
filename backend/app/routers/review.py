@@ -7,10 +7,25 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import schemas, crud
 from ..database import get_db
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, has_min_role
 from .. import models
 
 router = APIRouter()
+
+
+def can_access_word(db: Session, word: models.WordDetail, current_user: models.User) -> bool:
+    if has_min_role(current_user, "premium_user"):
+        return True
+
+    return crud.is_group_unlocked_for_user(db, word.chapterNo, word.groupId, current_user.id)
+
+
+def ensure_word_accessible(db: Session, word: models.WordDetail, current_user: models.User):
+    if not can_access_word(db, word, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该单词所属分组尚未解锁",
+        )
 
 @router.get("/due", response_model=List[schemas.ReviewWordInfo])
 async def get_review_due_words(
@@ -25,7 +40,7 @@ async def get_review_due_words(
     result = []
     for progress in progress_list:
         word = crud.get_word_by_id(db, progress.word_id)
-        if word:
+        if word and can_access_word(db, word, current_user):
             result.append({
                 "word_id": word.id,
                 "word": word.word,
@@ -63,6 +78,7 @@ async def update_word_difficulty(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="单词不存在"
         )
+    ensure_word_accessible(db, word, current_user)
 
     # 更新难度和复习计划
     progress = crud.update_word_difficulty(

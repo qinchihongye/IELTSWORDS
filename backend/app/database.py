@@ -16,12 +16,14 @@ from .avatar_storage import (
 from .config.settings import DATABASE_URL
 
 # 创建数据库引擎
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False, "timeout": 30},
-    pool_size=1,
-    echo=False,
-)
+engine_kwargs = {"echo": False}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update(
+        connect_args={"check_same_thread": False, "timeout": 30},
+        pool_size=1,
+    )
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # 创建SessionLocal类
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -56,6 +58,7 @@ def ensure_runtime_schema():
         statements.append(f"""
         CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT UNIQUE,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL,
@@ -66,6 +69,7 @@ def ensure_runtime_schema():
             ai_base_url TEXT,
             ai_api_key_encrypted TEXT,
             ai_model TEXT,
+            ai_model_display_name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP
@@ -73,8 +77,11 @@ def ensure_runtime_schema():
         """)
         statements.append("CREATE INDEX IF NOT EXISTS idx_username ON users(username)")
         statements.append("CREATE INDEX IF NOT EXISTS idx_email ON users(email)")
+        statements.append("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_uid ON users(uid)")
     else:
         user_columns = {column["name"] for column in inspector.get_columns("users")}
+        if "uid" not in user_columns:
+            statements.append("ALTER TABLE users ADD COLUMN uid TEXT")
         if "role" not in user_columns:
             statements.append("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
         if "is_active" not in user_columns:
@@ -89,8 +96,11 @@ def ensure_runtime_schema():
             statements.append("ALTER TABLE users ADD COLUMN ai_api_key_encrypted TEXT")
         if "ai_model" not in user_columns:
             statements.append("ALTER TABLE users ADD COLUMN ai_model TEXT")
+        if "ai_model_display_name" not in user_columns:
+            statements.append("ALTER TABLE users ADD COLUMN ai_model_display_name TEXT")
         if "updated_at" not in user_columns:
             statements.append("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP")
+        statements.append("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_uid ON users(uid)")
         statements.append("UPDATE users SET avatar_type = 'builtin' WHERE avatar_type IS NULL OR TRIM(avatar_type) = ''")
         statements.append(f"UPDATE users SET avatar_value = '{DEFAULT_BUILTIN_AVATAR_KEY}' WHERE avatar_value IS NULL OR TRIM(avatar_value) = ''")
 
@@ -108,6 +118,9 @@ def ensure_runtime_schema():
             next_review_date TIMESTAMP,
             difficulty_level INTEGER DEFAULT 3,
             is_mistake_marked BOOLEAN DEFAULT 0,
+            easiness_factor REAL DEFAULT 2.5 NOT NULL,
+            interval INTEGER DEFAULT 0 NOT NULL,
+            repetitions INTEGER DEFAULT 0 NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (word_id) REFERENCES word_details(id),
             UNIQUE(user_id, word_id)
@@ -123,6 +136,12 @@ def ensure_runtime_schema():
             statements.append("ALTER TABLE learning_progress ADD COLUMN difficulty_level INTEGER DEFAULT 3")
         if "is_mistake_marked" not in progress_columns:
             statements.append("ALTER TABLE learning_progress ADD COLUMN is_mistake_marked BOOLEAN DEFAULT 0")
+        if "easiness_factor" not in progress_columns:
+            statements.append("ALTER TABLE learning_progress ADD COLUMN easiness_factor REAL NOT NULL DEFAULT 2.5")
+        if "interval" not in progress_columns:
+            statements.append("ALTER TABLE learning_progress ADD COLUMN interval INTEGER NOT NULL DEFAULT 0")
+        if "repetitions" not in progress_columns:
+            statements.append("ALTER TABLE learning_progress ADD COLUMN repetitions INTEGER NOT NULL DEFAULT 0")
 
     if "check_in_streaks" not in existing_tables:
         statements.append("""
@@ -306,6 +325,10 @@ def ensure_runtime_schema():
             review_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            next_review_date TIMESTAMP,
+            easiness_factor REAL DEFAULT 2.5 NOT NULL,
+            interval INTEGER DEFAULT 0 NOT NULL,
+            repetitions INTEGER DEFAULT 0 NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (book_word_id) REFERENCES custom_book_words(id),
             UNIQUE(user_id, book_word_id)
@@ -320,6 +343,14 @@ def ensure_runtime_schema():
             statements.append("ALTER TABLE custom_book_progress ADD COLUMN review_count INTEGER DEFAULT 0")
         if "updated_at" not in custom_book_progress_columns:
             statements.append("ALTER TABLE custom_book_progress ADD COLUMN updated_at TIMESTAMP")
+        if "next_review_date" not in custom_book_progress_columns:
+            statements.append("ALTER TABLE custom_book_progress ADD COLUMN next_review_date TIMESTAMP")
+        if "easiness_factor" not in custom_book_progress_columns:
+            statements.append("ALTER TABLE custom_book_progress ADD COLUMN easiness_factor REAL NOT NULL DEFAULT 2.5")
+        if "interval" not in custom_book_progress_columns:
+            statements.append("ALTER TABLE custom_book_progress ADD COLUMN interval INTEGER NOT NULL DEFAULT 0")
+        if "repetitions" not in custom_book_progress_columns:
+            statements.append("ALTER TABLE custom_book_progress ADD COLUMN repetitions INTEGER NOT NULL DEFAULT 0")
 
     with engine.begin() as connection:
         for statement in statements:
