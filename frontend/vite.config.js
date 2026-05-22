@@ -10,7 +10,7 @@ const projectRoot = resolve(frontendDir, '..')
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, projectRoot, '')
-  const frontendPort = Number(env.FRONTEND_PORT || 5433)
+  const frontendPort = Number(env.FRONTEND_PORT || 8889)
 
   return {
     envDir: projectRoot,

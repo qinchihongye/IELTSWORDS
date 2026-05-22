@@ -290,12 +290,16 @@ async def list_builtin_avatars(
     ]
 
 
+from fastapi import Form
+
 @router.post("/builtin-avatars/upload")
 async def upload_builtin_avatar(
     file: UploadFile = File(...),
+    variety: str | None = Form(None),
+    avatars_name: str | None = Form(None),
     current_user=Depends(require_super_admin),
 ):
-    url = await save_builtin_avatar(file)
+    url = await save_builtin_avatar(file, variety=variety, avatars_name=avatars_name)
     return {"url": url, "filename": file.filename}
 
 

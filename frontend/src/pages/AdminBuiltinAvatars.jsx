@@ -144,6 +144,11 @@ const AdminBuiltinAvatars = () => {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [uploadFileName, setUploadFileName] = useState('');
 
+  // Batch upload states
+  const [batchQueue, setBatchQueue] = useState([]);
+  const [currentBatchItem, setCurrentBatchItem] = useState(null);
+  const folderInputRef = React.useRef(null);
+
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
@@ -198,10 +203,59 @@ const AdminBuiltinAvatars = () => {
       // Force change original suffix to .png since circular cropping outputs PNG transparency
       const baseName = file.name.replace(/\.[^.]+$/, '');
       setUploadFileName(`${baseName}.png`);
+      // Reset batch state in case we were doing batch
+      setBatchQueue([]);
+      setCurrentBatchItem(null);
     });
     reader.readAsDataURL(file);
     return false; // Prevent automatic uploading
   }, []);
+
+  const handleFolderSelect = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    
+    const existingNames = new Set(avatars.map(a => a.label));
+    const queue = [];
+    
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      
+      const pathParts = file.webkitRelativePath.split('/');
+      // Expecting structure like: "预设头像/彩叶芋/白蝴蝶.jpg"
+      if (pathParts.length >= 3) {
+        const variety = pathParts[pathParts.length - 2];
+        const fileName = pathParts[pathParts.length - 1];
+        const avatars_name = fileName.replace(/\.[^.]+$/, '');
+        
+        if (!existingNames.has(avatars_name)) {
+          queue.push({ file, variety, avatars_name });
+        }
+      }
+    }
+    
+    // Clear input so same folder can be selected again
+    if (folderInputRef.current) folderInputRef.current.value = '';
+    
+    if (queue.length === 0) {
+      message.info('选定的预设文件夹中没有发现新头像，或所有头像均已存在');
+      return;
+    }
+    
+    message.success(`自动比对完成，发现 ${queue.length} 个新头像待上传`);
+    setBatchQueue(queue);
+    startCropForItem(queue[0]);
+  };
+
+  const startCropForItem = (item) => {
+    setCurrentBatchItem(item);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImage(reader.result);
+      setUploadFileName(`${item.avatars_name}.png`);
+    };
+    reader.readAsDataURL(item.file);
+  };
 
   // Submit the cropped circular PNG Blob to backend
   const handleCropSubmit = async () => {
@@ -214,6 +268,11 @@ const AdminBuiltinAvatars = () => {
       const formData = new FormData();
       formData.append('file', croppedFile);
       
+      if (currentBatchItem) {
+        formData.append('variety', currentBatchItem.variety);
+        formData.append('avatars_name', currentBatchItem.avatars_name);
+      }
+      
       await apiClient.post('/api/admin/builtin-avatars/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -222,11 +281,32 @@ const AdminBuiltinAvatars = () => {
       setCropImage(null); // Close Cropper Modal
       await fetchList();
       await fetchDynamicBuiltinAvatars();
+
+      // Process next in batch if exists
+      if (currentBatchItem) {
+        const nextQueue = batchQueue.slice(1);
+        setBatchQueue(nextQueue);
+        if (nextQueue.length > 0) {
+           setTimeout(() => startCropForItem(nextQueue[0]), 400); // Small delay for UX
+        } else {
+           setCurrentBatchItem(null);
+           message.success('批量上传处理全部完成！');
+        }
+      }
     } catch (error) {
       console.error('上传裁剪圆形头像失败:', error);
       message.error('圆形裁剪或上传失败，请重试');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCancelCrop = () => {
+    setCropImage(null);
+    if (currentBatchItem) {
+       message.info('已终止批量自动上传队列');
+       setBatchQueue([]);
+       setCurrentBatchItem(null);
     }
   };
 
@@ -409,27 +489,54 @@ const AdminBuiltinAvatars = () => {
       {/* Upload Drag Area & Grid Split */}
       <div className="admin-avatars-workspace">
         <div className="workspace-main">
-          {/* Custom Styled Drag & Drop Zone */}
-          <div className="premium-upload-container">
-            <Upload.Dragger
-              accept=".png,.jpg,.jpeg,.webp"
-              showUploadList={false}
-              beforeUpload={beforeUpload}
-              disabled={uploading}
-              className="premium-dragger"
-            >
-              <div className="dragger-interior">
-                <p className="dragger-icon-pulse">
-                  {uploading ? <Spin size="large" /> : <InboxOutlined />}
-                </p>
-                <h3 className="dragger-title">
-                  {uploading ? '正在解析文件并打开裁剪沙盒...' : '拖拽新头像图片到此处，或点击浏览本地文件'}
-                </h3>
-                <p className="dragger-description">
-                  支持 PNG、JPG、JPEG 或 WEBP • 物理无损圆形裁剪（原画画质）
-                </p>
+          {/* Custom Styled Drag & Drop Zone - Split into two sections */}
+          <div className="premium-upload-split-container">
+            <div className="upload-half">
+              <Upload.Dragger
+                accept=".png,.jpg,.jpeg,.webp"
+                showUploadList={false}
+                beforeUpload={beforeUpload}
+                disabled={uploading}
+                className="premium-dragger"
+                style={{ height: '100%' }}
+              >
+                <div className="dragger-interior">
+                  <p className="dragger-icon-pulse">
+                    {uploading ? <Spin size="large" /> : <InboxOutlined />}
+                  </p>
+                  <h3 className="dragger-title">普通文件上传</h3>
+                  <p className="dragger-description">
+                    拖拽或点击选择单张/多张图片
+                  </p>
+                </div>
+              </Upload.Dragger>
+            </div>
+            
+            <div className="upload-half">
+              <div
+                className="premium-dragger folder-dragger"
+                onClick={() => folderInputRef.current?.click()}
+              >
+                <div className="dragger-interior">
+                  <p className="dragger-icon-pulse">
+                    {uploading ? <Spin size="large" /> : <AppstoreOutlined style={{ color: '#10b981' }} />}
+                  </p>
+                  <h3 className="dragger-title" style={{ color: '#10b981' }}>从【预设头像】文件夹上传</h3>
+                  <p className="dragger-description">
+                    自动扫描未上传头像并连续裁剪 (读取品种与名称)
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  webkitdirectory="true"
+                  directory="true"
+                  multiple
+                  style={{ display: 'none' }}
+                  ref={folderInputRef}
+                  onChange={handleFolderSelect}
+                />
               </div>
-            </Upload.Dragger>
+            </div>
           </div>
 
           {/* New Scalable Control Toolbar (Search, Filter, ViewMode Toggle) */}
@@ -609,10 +716,17 @@ const AdminBuiltinAvatars = () => {
           </div>
         }
         open={!!cropImage}
-        onCancel={() => setCropImage(null)}
+        onCancel={handleCancelCrop}
         footer={
           <div className="cropper-modal-footer">
-            <Button size="large" onClick={() => setCropImage(null)} style={{ borderRadius: '8px' }}>
+            <div style={{ flex: 1, textAlign: 'left' }}>
+              {currentBatchItem && (
+                <Text type="success" strong>
+                  批量队列剩余待处理：{batchQueue.length} 个
+                </Text>
+              )}
+            </div>
+            <Button size="large" onClick={handleCancelCrop} style={{ borderRadius: '8px' }}>
               取消
             </Button>
             <Button
@@ -623,7 +737,7 @@ const AdminBuiltinAvatars = () => {
               onClick={handleCropSubmit}
               className="cropper-confirm-btn"
             >
-              确认裁剪并上传
+              确认裁剪并上传 {currentBatchItem && ' (下一张)'}
             </Button>
           </div>
         }
@@ -921,8 +1035,24 @@ const css = `
 }
 
 /* Drag & Drop upload container */
-.premium-upload-container {
+.premium-upload-split-container {
+  display: flex;
+  gap: 24px;
   margin-bottom: 24px;
+}
+
+.upload-half {
+  flex: 1;
+  min-width: 0;
+}
+
+.folder-dragger {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
 }
 
 .premium-dragger.ant-upload-drag {
@@ -1702,6 +1832,9 @@ const css = `
   }
   .toolbar-left {
     max-width: none;
+  }
+  .premium-upload-split-container {
+    flex-direction: column;
   }
 }
 

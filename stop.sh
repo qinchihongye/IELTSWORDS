@@ -21,8 +21,8 @@ load_root_env() {
 
 load_root_env
 
-BACKEND_PORT="${SERVER_PORT:-5432}"
-FRONTEND_PORT="${FRONTEND_PORT:-5433}"
+BACKEND_PORT="${SERVER_PORT:-8888}"
+FRONTEND_PORT="${FRONTEND_PORT:-8889}"
 
 ensure_command() {
   local cmd="$1"

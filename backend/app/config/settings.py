@@ -145,7 +145,7 @@ def resolve_database_url(url: str) -> str:
 
 # 服务器配置
 SERVER_HOST = _env_text("SERVER_HOST") or _config_get(("server", "host"), "0.0.0.0")
-SERVER_PORT = _env_int("SERVER_PORT", int(_config_get(("server", "port"), 5432)))
+SERVER_PORT = _env_int("SERVER_PORT", int(_config_get(("server", "port"), 8888)))
 SERVER_RELOAD = _env_bool("SERVER_RELOAD", bool(_config_get(("server", "reload"), False)))
 SERVER_ACCESS_LOG = _env_bool("SERVER_ACCESS_LOG", True)
 

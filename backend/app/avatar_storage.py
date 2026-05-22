@@ -3,6 +3,7 @@
 """
 
 import io
+import json
 import re
 from pathlib import Path
 from uuid import uuid4
@@ -257,7 +258,7 @@ def is_hardcoded_builtin_avatar(filename: str) -> bool:
     return filename in BUILTIN_AVATAR_KEYS
 
 
-async def save_builtin_avatar(file: UploadFile) -> str:
+async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avatars_name: str | None = None) -> str:
     suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
     if not suffix:
         raw_suffix = Path(file.filename or "").suffix.lower()
@@ -291,6 +292,20 @@ async def save_builtin_avatar(file: UploadFile) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"保存圆形头像失败: {e}",
         )
+
+    if variety and avatars_name:
+        metadata = {}
+        metadata_path = BUILTIN_AVATAR_UPLOAD_DIR / "metadata.json"
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        metadata[filename] = {"variety": variety, "avatars_name": avatars_name}
+        metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+        
+        if frontend_assets_dir.exists():
+            (frontend_assets_dir / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
     refresh_valid_builtin_keys()
     return f"{BUILTIN_AVATAR_URL_PREFIX}/{filename}"
