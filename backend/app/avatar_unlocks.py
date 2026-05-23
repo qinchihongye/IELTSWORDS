@@ -48,11 +48,7 @@ class AvatarUnlockRule:
 def _avatar_label(filename: str, metadata: dict[str, dict]) -> str:
     item = metadata.get(filename) or {}
     label = str(item.get("avatars_name") or "").strip()
-    label = label or filename.rsplit(".", 1)[0]
-    variety = str(item.get("variety") or "").strip()
-    if variety and variety != "未分类":
-        return f"{variety}：{label}"
-    return label
+    return label or filename.rsplit(".", 1)[0]
 
 
 def _chapter_sort_key(chapter_no: str | None) -> tuple[int, str]:
