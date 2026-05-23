@@ -51,6 +51,12 @@ PRESET_AVATARS_DIR = BASE_DIR / "预设头像"
 if PRESET_AVATARS_DIR.exists():
     app.mount("/preset-avatars", StaticFiles(directory=str(PRESET_AVATARS_DIR)), name="preset-avatars")
 
+# [警告] 开放数据库目录，仅供本地开发调试时下载使用
+# 如果要部署到公网，请务必删除或加权限控制，否则会导致数据库泄漏！
+DB_DIR = BASE_DIR / "db"
+if DB_DIR.exists():
+    app.mount("/db", StaticFiles(directory=str(DB_DIR)), name="db")
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,

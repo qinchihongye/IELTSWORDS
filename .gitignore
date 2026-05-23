@@ -50,14 +50,6 @@ yarn.lock
 frontend/dist/
 frontend/build/
 
-# Database (track main databases, ignore runtime artifacts and backups)
-db/*.db-journal
-db/*.db-wal
-db/*.db-shm
-db/*.backup_*
-db/*.safe_*
-db/backups/
-
 # Logs
 *.log
 

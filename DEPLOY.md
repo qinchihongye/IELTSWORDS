@@ -53,11 +53,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 - `ENVIRONMENT=production`
 - `SERVER_HOST=127.0.0.1`
+- `SERVER_PORT=8889`
 - `SERVER_RELOAD=false`
+- `FRONTEND_PORT=8888`
 - `SECRET_KEY=<generated-secret>`
 - `FERNET_KEY=<generated-fernet-key>`
-- `CORS_ORIGINS=https://example.com`
-- `VITE_API_BASE_URL=https://example.com`
+- `CORS_ORIGINS=http://<公网IP>:8888` 或 `https://<你的域名>`
+- `VITE_API_BASE_URL=http://<公网IP>:8888` 或 `https://<你的域名>`
 
 除非你明确要调整文件位置，否则以下配置应保持不变：
 
@@ -133,6 +135,13 @@ sudo ln -s /etc/nginx/sites-available/ieltswords /etc/nginx/sites-enabled/ieltsw
 - `example.com`
 - `/opt/ieltswords`
 
+如果你准备按当前项目约定对外提供：
+
+- 前端端口：`8888`
+- 后端端口：`8889`
+
+那么 Nginx 应监听 `8888`，并把 `/api` 反向代理到 `127.0.0.1:8889`。
+
 然后测试并重载：
 
 ```bash
@@ -140,7 +149,8 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-再使用你习惯的证书工具配置 HTTPS，例如 Certbot。
+如果你当前先用公网 IP 访问，并且希望前端直接走 `8888` 端口，那么可以先不配 HTTPS，
+直接使用 `http://<公网IP>:8888`。后续如果切域名，再补 Certbot 和 443。
 
 ## 7. 备份
 
@@ -174,11 +184,13 @@ bash deploy/scripts/predeploy_check.sh
 
 - `/opt/ieltswords/.env` 已存在，并且应用运行用户有读取权限
 - `.env` 中已设置高强度 `SECRET_KEY` 和 `FERNET_KEY`
-- `.env` 中的 `CORS_ORIGINS` 已配置为生产环境域名
-- `.env` 中的 `VITE_API_BASE_URL` 已指向公网后端地址
+- `.env` 中的 `SERVER_PORT` 已设置为 `8889`
+- `.env` 中的 `FRONTEND_PORT` 已设置为 `8888`
+- `.env` 中的 `CORS_ORIGINS` 已配置为公网访问地址
+- `.env` 中的 `VITE_API_BASE_URL` 已指向公网前端地址（例如 `http://<公网IP>:8888`）
 - `npm run build` 能成功通过
 - `deploy/scripts/predeploy_check.sh` 能成功通过
 - SQLite 备份可正常执行
 - Nginx 能正常提供前端页面
-- 通过公网域名访问 `/health` 能返回 healthy
+- 通过公网地址访问 `/health` 能返回 healthy
 - 登录、学习、看图、复习、测验、错词本、打卡等核心流程均已测试
