@@ -97,7 +97,7 @@ const Profile = () => {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [uploadFileName, setUploadFileName] = useState('');
-  const [avatarOptions, setAvatarOptions] = useState(BUILTIN_AVATAR_OPTIONS);
+  const [avatarOptions, setAvatarOptions] = useState([]);
   const [nextUnlockCondition, setNextUnlockCondition] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
   const [previewAvatar, setPreviewAvatar] = useState(null);
@@ -127,12 +127,6 @@ const Profile = () => {
       setNextUnlockCondition(response.data?.next_unlock_condition || '');
     } catch (error) {
       console.error('加载头像选项失败:', error);
-      await fetchDynamicBuiltinAvatars();
-      setAvatarOptions(BUILTIN_AVATAR_OPTIONS.map((option) => ({
-        ...option,
-        unlockSource: option.vipOnly ? 'vip' : 'public',
-      })));
-      setNextUnlockCondition('');
     } finally {
       setAvatarCatalogLoading(false);
     }

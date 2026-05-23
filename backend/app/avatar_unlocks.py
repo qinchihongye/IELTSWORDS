@@ -25,6 +25,15 @@ from .dependencies import has_min_role
 
 AVATAR_UNLOCK_RULES_PATH = BASE_DIR / "data" / "avatar-unlocks.json"
 CHAPTER_COMPLETION_UNLOCK = "chapter_completion"
+WORDS_MASTERED_UNLOCK = "words_mastered"
+
+_total_words_cache = None
+
+def get_total_words(db: Session) -> int:
+    global _total_words_cache
+    if _total_words_cache is None:
+        _total_words_cache = db.query(models.WordDetail).count()
+    return _total_words_cache
 
 
 @dataclass(frozen=True)
@@ -32,13 +41,18 @@ class AvatarUnlockRule:
     avatar_key: str
     unlock_type: str
     chapter_no: Optional[str] = None
+    target_value: Optional[int] = None
     min_role: Optional[str] = None
 
 
 def _avatar_label(filename: str, metadata: dict[str, dict]) -> str:
     item = metadata.get(filename) or {}
     label = str(item.get("avatars_name") or "").strip()
-    return label or filename.rsplit(".", 1)[0]
+    label = label or filename.rsplit(".", 1)[0]
+    variety = str(item.get("variety") or "").strip()
+    if variety and variety != "未分类":
+        return f"{variety}：{label}"
+    return label
 
 
 def _chapter_sort_key(chapter_no: str | None) -> tuple[int, str]:
@@ -86,7 +100,47 @@ def load_avatar_unlock_rules() -> list[AvatarUnlockRule]:
                 )
             )
 
-    rules.sort(key=lambda rule: (_chapter_sort_key(rule.chapter_no), rule.avatar_key))
+    return rules
+
+
+def get_all_active_unlock_rules(db: Session = None) -> list[AvatarUnlockRule]:
+    rules = load_avatar_unlock_rules()
+    
+    if not db:
+        return rules
+        
+    all_keys = get_all_builtin_avatar_keys()
+    static_locked_keys = {r.avatar_key for r in rules}
+    vip_locked_keys = set(VIP_ONLY_BUILTIN_AVATAR_KEYS)
+    
+    locked_keys = static_locked_keys.union(vip_locked_keys)
+    
+    # Dynamic pool (avatars that are not VIP and not in JSON)
+    dynamic_keys = [k for k in all_keys if k not in locked_keys]
+    if dynamic_keys:
+        dynamic_keys.sort() # Predictable sort
+        
+        total_words = get_total_words(db)
+        if total_words > 0:
+            step = total_words / len(dynamic_keys)
+            for i, key in enumerate(dynamic_keys):
+                target_value = max(1, int(round((i + 1) * step)))
+                rules.append(
+                    AvatarUnlockRule(
+                        avatar_key=key,
+                        unlock_type=WORDS_MASTERED_UNLOCK,
+                        target_value=target_value,
+                    )
+                )
+                
+    def sort_key(rule):
+        if rule.unlock_type == CHAPTER_COMPLETION_UNLOCK:
+            return (0, _chapter_sort_key(rule.chapter_no), rule.avatar_key)
+        if rule.unlock_type == WORDS_MASTERED_UNLOCK:
+            return (1, rule.target_value or 0, rule.avatar_key)
+        return (2, 0, rule.avatar_key)
+
+    rules.sort(key=sort_key)
     return rules
 
 
@@ -167,8 +221,15 @@ def get_completed_chapter_numbers(db: Session, user_id: int) -> set[str]:
     return completed
 
 
-def _get_rule_map() -> dict[str, AvatarUnlockRule]:
-    return {rule.avatar_key: rule for rule in get_chapter_completion_unlock_rules()}
+def get_user_unlock_stats(db: Session, user_id: int) -> dict:
+    words_mastered = db.query(func.count(models.LearningProgress.id)).filter(
+        models.LearningProgress.user_id == user_id,
+        models.LearningProgress.status.in_(["learning", "mastered"])
+    ).scalar() or 0
+
+    return {
+        WORDS_MASTERED_UNLOCK: words_mastered,
+    }
 
 
 def get_builtin_avatar_access_source(
@@ -176,41 +237,61 @@ def get_builtin_avatar_access_source(
     user: models.User,
     avatar_key: str,
     completed_chapters: Optional[set[str]] = None,
+    user_stats: Optional[dict] = None,
     rule_map: Optional[dict[str, AvatarUnlockRule]] = None,
 ) -> Optional[str]:
     if user.role == "super_admin":
         return "super_admin"
 
-    active_rule_map = rule_map or _get_rule_map()
+    # Fallback to empty map if None, but we should always have it now.
+    active_rule_map = rule_map or {}
     rule = active_rule_map.get(avatar_key)
+    
     if rule:
         if rule.min_role and not has_min_role(user, rule.min_role):
             return None
-        active_completed_chapters = completed_chapters
-        if active_completed_chapters is None:
-            active_completed_chapters = get_completed_chapter_numbers(db, user.id)
-        return CHAPTER_COMPLETION_UNLOCK if rule.chapter_no in active_completed_chapters else None
+            
+        if rule.unlock_type == CHAPTER_COMPLETION_UNLOCK:
+            active_completed_chapters = completed_chapters
+            if active_completed_chapters is None:
+                active_completed_chapters = get_completed_chapter_numbers(db, user.id)
+            return rule.unlock_type if rule.chapter_no in active_completed_chapters else None
+            
+        if rule.unlock_type == WORDS_MASTERED_UNLOCK:
+            active_stats = user_stats
+            if active_stats is None:
+                active_stats = get_user_unlock_stats(db, user.id)
+            if active_stats.get(rule.unlock_type, 0) >= (rule.target_value or 0):
+                return rule.unlock_type
+            return None
 
     if avatar_key in VIP_ONLY_BUILTIN_AVATAR_KEYS:
         return "vip" if has_min_role(user, "premium_user") else None
 
+    # Note: Because of dynamic assignment, there will likely be no "public" avatars 
+    # except super_admin or if total_words=0
     return "public"
 
 
 def can_user_select_builtin_avatar(db: Session, user: models.User, avatar_key: str) -> bool:
-    return bool(get_builtin_avatar_access_source(db, user, avatar_key))
+    # Build active rules including dynamic ones
+    all_rules = get_all_active_unlock_rules(db)
+    rule_map = {rule.avatar_key: rule for rule in all_rules}
+    return bool(get_builtin_avatar_access_source(db, user, avatar_key, rule_map=rule_map))
 
 
 def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
     metadata = load_builtin_avatar_metadata()
     avatar_keys = get_all_builtin_avatar_keys()
-    chapter_rules = get_chapter_completion_unlock_rules()
-    rule_map = {rule.avatar_key: rule for rule in chapter_rules}
-    completed_chapters = (
-        set()
-        if user.role == "super_admin"
-        else get_completed_chapter_numbers(db, user.id)
-    )
+    
+    all_rules = get_all_active_unlock_rules(db)
+    rule_map = {rule.avatar_key: rule for rule in all_rules}
+    
+    completed_chapters = set()
+    user_stats = {}
+    if user.role != "super_admin":
+        completed_chapters = get_completed_chapter_numbers(db, user.id)
+        user_stats = get_user_unlock_stats(db, user.id)
 
     visible_avatars = []
     for avatar_key in avatar_keys:
@@ -219,6 +300,7 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
             user,
             avatar_key,
             completed_chapters=completed_chapters,
+            user_stats=user_stats,
             rule_map=rule_map,
         )
         if not access_source:
@@ -236,23 +318,29 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
         })
 
     def avatar_sort_key(item: dict) -> tuple:
+        rule = rule_map.get(item["key"])
         if item["unlock_source"] == CHAPTER_COMPLETION_UNLOCK:
-            rule = rule_map.get(item["key"])
             return (0, _chapter_sort_key(rule.chapter_no if rule else None), item["label"])
+        if item["unlock_source"] == WORDS_MASTERED_UNLOCK:
+            return (1, rule.target_value if rule else 0, item["label"])
         if item["vip_only"]:
-            return (1, item["label"])
-        return (2, item["label"])
+            return (2, 0, item["label"])
+        return (3, 0, item["label"])
 
     visible_avatars.sort(key=avatar_sort_key)
 
     next_unlock_condition = None
     if user.role != "super_admin":
-        for rule in chapter_rules:
+        for rule in all_rules:
             if rule.min_role and not has_min_role(user, rule.min_role):
                 continue
-            if rule.chapter_no not in completed_chapters:
-                next_unlock_condition = f"完成第 {rule.chapter_no} 章学习后解锁新的章节头像"
+            if rule.unlock_type == CHAPTER_COMPLETION_UNLOCK and rule.chapter_no not in completed_chapters:
+                next_unlock_condition = f"完成第 {rule.chapter_no} 章学习后解锁精美头像"
                 break
+            if rule.unlock_type == WORDS_MASTERED_UNLOCK:
+                if user_stats.get(rule.unlock_type, 0) < (rule.target_value or 0):
+                    next_unlock_condition = f"累计掌握 {rule.target_value} 词后解锁精美头像"
+                    break
 
     return {
         "avatars": visible_avatars,

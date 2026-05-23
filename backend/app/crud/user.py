@@ -52,17 +52,17 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.refresh(db_user)
     return db_user
 
-def authenticate_user(db: Session, username: str, password: str) -> Optional[models.User]:
+def authenticate_user(db: Session, username: str, password: str) -> tuple[Optional[models.User], Optional[str]]:
     """验证用户，支持用户名或邮箱登录"""
     identifier = (username or "").strip()
     user = get_user_by_username(db, identifier)
     if not user and identifier:
         user = db.query(models.User).filter(func.lower(models.User.email) == identifier.lower()).first()
     if not user:
-        return None
+        return None, "当前用户不存在"
     if not auth.verify_password(password, user.hashed_password):
-        return None
-    return user
+        return None, "密码错误"
+    return user, None
 
 def update_user_password(db: Session, user: models.User, password: str) -> models.User:
     """更新用户密码"""

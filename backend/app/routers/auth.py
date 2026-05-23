@@ -58,11 +58,11 @@ async def login(
     用户登录
     """
     # 验证用户
-    user = crud.authenticate_user(db, form_data.username, form_data.password)
+    user, error_msg = crud.authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail=error_msg or "用户名或密码错误",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

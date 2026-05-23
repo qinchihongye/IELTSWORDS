@@ -59,6 +59,556 @@
       "avatarKey": "甜心.png",
       "unlockType": "chapter_completion",
       "chapterNo": "12"
+    },
+    {
+      "avatarKey": "盘龙碧玉.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "13"
+    },
+    {
+      "avatarKey": "列车.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "13"
+    },
+    {
+      "avatarKey": "白锦叶下珠.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "13"
+    },
+    {
+      "avatarKey": "西施浣纱.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "14"
+    },
+    {
+      "avatarKey": "萨利安.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "14"
+    },
+    {
+      "avatarKey": "鬼灯丸.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "14"
+    },
+    {
+      "avatarKey": "丁香之青.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "15"
+    },
+    {
+      "avatarKey": "莫奈.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "15"
+    },
+    {
+      "avatarKey": "微风.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "15"
+    },
+    {
+      "avatarKey": "辉夜姬.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "16"
+    },
+    {
+      "avatarKey": "雪莹.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "16"
+    },
+    {
+      "avatarKey": "鳟鱼.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "16"
+    },
+    {
+      "avatarKey": "南美荧光.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "17"
+    },
+    {
+      "avatarKey": "安妮公主.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "17"
+    },
+    {
+      "avatarKey": "瓦萨维斯.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "17"
+    },
+    {
+      "avatarKey": "冰淇淋.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "18"
+    },
+    {
+      "avatarKey": "金刚狼.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "18"
+    },
+    {
+      "avatarKey": "天鹅.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "18"
+    },
+    {
+      "avatarKey": "浪花.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "19"
+    },
+    {
+      "avatarKey": "北极夜.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "19"
+    },
+    {
+      "avatarKey": "素贞.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "19"
+    },
+    {
+      "avatarKey": "麦克道尔.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "20"
+    },
+    {
+      "avatarKey": "绿水青山.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "20"
+    },
+    {
+      "avatarKey": "绿天鹅绒.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "20"
+    },
+    {
+      "avatarKey": "帅旗.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "21"
+    },
+    {
+      "avatarKey": "几何.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "21"
+    },
+    {
+      "avatarKey": "国华雪桥.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "21"
+    },
+    {
+      "avatarKey": "超新星.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "22"
+    },
+    {
+      "avatarKey": "纪梵希.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "22"
+    },
+    {
+      "avatarKey": "月光灯.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "22"
+    },
+    {
+      "avatarKey": "OMG.png",
+      "unlockType": "words_mastered",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "秋之华.png",
+      "unlockType": "words_mastered",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "帝王.png",
+      "unlockType": "words_mastered",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "香草草莓.png",
+      "unlockType": "words_mastered",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "漫卷流光.png",
+      "unlockType": "words_mastered",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "维塔.png",
+      "unlockType": "words_mastered",
+      "targetValue": 300
+    },
+    {
+      "avatarKey": "白雪塔.png",
+      "unlockType": "words_mastered",
+      "targetValue": 300
+    },
+    {
+      "avatarKey": "盘龙嫦娥.png",
+      "unlockType": "words_mastered",
+      "targetValue": 300
+    },
+    {
+      "avatarKey": "舞裙.png",
+      "unlockType": "words_mastered",
+      "targetValue": 300
+    },
+    {
+      "avatarKey": "伊丽莎白.png",
+      "unlockType": "words_mastered",
+      "targetValue": 300
+    },
+    {
+      "avatarKey": "柠檬汁.png",
+      "unlockType": "words_mastered",
+      "targetValue": 500
+    },
+    {
+      "avatarKey": "幻影.png",
+      "unlockType": "words_mastered",
+      "targetValue": 500
+    },
+    {
+      "avatarKey": "雪后.png",
+      "unlockType": "words_mastered",
+      "targetValue": 500
+    },
+    {
+      "avatarKey": "蓝色沙龙舞.png",
+      "unlockType": "words_mastered",
+      "targetValue": 500
+    },
+    {
+      "avatarKey": "山乌龟.png",
+      "unlockType": "words_mastered",
+      "targetValue": 500
+    },
+    {
+      "avatarKey": "小木槿.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1000
+    },
+    {
+      "avatarKey": "白鹰狮.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1000
+    },
+    {
+      "avatarKey": "绿云.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1000
+    },
+    {
+      "avatarKey": "明脉.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1000
+    },
+    {
+      "avatarKey": "三河千鸟.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1000
+    },
+    {
+      "avatarKey": "魔法喷泉.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1500
+    },
+    {
+      "avatarKey": "松染.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1500
+    },
+    {
+      "avatarKey": "凤凰振羽.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1500
+    },
+    {
+      "avatarKey": "罗伯特高登.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1500
+    },
+    {
+      "avatarKey": "恋物语.png",
+      "unlockType": "words_mastered",
+      "targetValue": 1500
+    },
+    {
+      "avatarKey": "纱织小姐.png",
+      "unlockType": "words_mastered",
+      "targetValue": 2000
+    },
+    {
+      "avatarKey": "阿曼.png",
+      "unlockType": "words_mastered",
+      "targetValue": 2000
+    },
+    {
+      "avatarKey": "瑞云殿.png",
+      "unlockType": "words_mastered",
+      "targetValue": 2000
+    },
+    {
+      "avatarKey": "无尽夏新娘.png",
+      "unlockType": "words_mastered",
+      "targetValue": 2000
+    },
+    {
+      "avatarKey": "猫耳朵.png",
+      "unlockType": "words_mastered",
+      "targetValue": 2000
+    },
+    {
+      "avatarKey": "艾莎.png",
+      "unlockType": "words_mastered",
+      "targetValue": 3000
+    },
+    {
+      "avatarKey": "火鹤后.png",
+      "unlockType": "words_mastered",
+      "targetValue": 3000
+    },
+    {
+      "avatarKey": "SKG银.png",
+      "unlockType": "words_mastered",
+      "targetValue": 3000
+    },
+    {
+      "avatarKey": "丁力.png",
+      "unlockType": "words_mastered",
+      "targetValue": 3000
+    },
+    {
+      "avatarKey": "富士山锦.png",
+      "unlockType": "words_mastered",
+      "targetValue": 3000
+    },
+    {
+      "avatarKey": "点绛唇.png",
+      "unlockType": "streak_days",
+      "targetValue": 3
+    },
+    {
+      "avatarKey": "沙丁鱼.png",
+      "unlockType": "streak_days",
+      "targetValue": 3
+    },
+    {
+      "avatarKey": "白锦鸟巢蕨.png",
+      "unlockType": "streak_days",
+      "targetValue": 3
+    },
+    {
+      "avatarKey": "黑桃.png",
+      "unlockType": "streak_days",
+      "targetValue": 3
+    },
+    {
+      "avatarKey": "富士山.png",
+      "unlockType": "streak_days",
+      "targetValue": 3
+    },
+    {
+      "avatarKey": "蓝雪花.png",
+      "unlockType": "streak_days",
+      "targetValue": 7
+    },
+    {
+      "avatarKey": "巧克力.png",
+      "unlockType": "streak_days",
+      "targetValue": 7
+    },
+    {
+      "avatarKey": "乌头杂.png",
+      "unlockType": "streak_days",
+      "targetValue": 7
+    },
+    {
+      "avatarKey": "国绿.png",
+      "unlockType": "streak_days",
+      "targetValue": 7
+    },
+    {
+      "avatarKey": "植物鸟.png",
+      "unlockType": "streak_days",
+      "targetValue": 7
+    },
+    {
+      "avatarKey": "蜜瓜奶油.png",
+      "unlockType": "streak_days",
+      "targetValue": 14
+    },
+    {
+      "avatarKey": "十丈垂帘.png",
+      "unlockType": "streak_days",
+      "targetValue": 14
+    },
+    {
+      "avatarKey": "纸麟托菊.png",
+      "unlockType": "streak_days",
+      "targetValue": 14
+    },
+    {
+      "avatarKey": "黄月.png",
+      "unlockType": "streak_days",
+      "targetValue": 14
+    },
+    {
+      "avatarKey": "露娜.png",
+      "unlockType": "streak_days",
+      "targetValue": 14
+    },
+    {
+      "avatarKey": "墨荷.png",
+      "unlockType": "streak_days",
+      "targetValue": 21
+    },
+    {
+      "avatarKey": "安徽羽叶报春.png",
+      "unlockType": "streak_days",
+      "targetValue": 21
+    },
+    {
+      "avatarKey": "绿牡丹.png",
+      "unlockType": "streak_days",
+      "targetValue": 21
+    },
+    {
+      "avatarKey": "貂蝉拜月.png",
+      "unlockType": "streak_days",
+      "targetValue": 21
+    },
+    {
+      "avatarKey": "辛巴达.png",
+      "unlockType": "streak_days",
+      "targetValue": 21
+    },
+    {
+      "avatarKey": "白犀牛.png",
+      "unlockType": "streak_days",
+      "targetValue": 30
+    },
+    {
+      "avatarKey": "nano.png",
+      "unlockType": "streak_days",
+      "targetValue": 30
+    },
+    {
+      "avatarKey": "玉女.png",
+      "unlockType": "streak_days",
+      "targetValue": 30
+    },
+    {
+      "avatarKey": "青之幻想.png",
+      "unlockType": "streak_days",
+      "targetValue": 30
+    },
+    {
+      "avatarKey": "PP.png",
+      "unlockType": "streak_days",
+      "targetValue": 30
+    },
+    {
+      "avatarKey": "紫霞仙子.png",
+      "unlockType": "streak_days",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "薄荷麒麟尾.png",
+      "unlockType": "streak_days",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "沉香台.png",
+      "unlockType": "streak_days",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "乌托邦.png",
+      "unlockType": "streak_days",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "三华李.png",
+      "unlockType": "streak_days",
+      "targetValue": 100
+    },
+    {
+      "avatarKey": "帝王银珠.png",
+      "unlockType": "total_checkins",
+      "targetValue": 50
+    },
+    {
+      "avatarKey": "月见樱.png",
+      "unlockType": "total_checkins",
+      "targetValue": 50
+    },
+    {
+      "avatarKey": "阿修罗.png",
+      "unlockType": "total_checkins",
+      "targetValue": 50
+    },
+    {
+      "avatarKey": "二月.png",
+      "unlockType": "total_checkins",
+      "targetValue": 50
+    },
+    {
+      "avatarKey": "绿玉.png",
+      "unlockType": "total_checkins",
+      "targetValue": 50
+    },
+    {
+      "avatarKey": "绿天鹅绒锦.png",
+      "unlockType": "total_checkins",
+      "targetValue": 150
+    },
+    {
+      "avatarKey": "美声柠檬黄.png",
+      "unlockType": "total_checkins",
+      "targetValue": 150
+    },
+    {
+      "avatarKey": "白龟.png",
+      "unlockType": "total_checkins",
+      "targetValue": 150
+    },
+    {
+      "avatarKey": "粉锦黑天鹅绒.png",
+      "unlockType": "total_checkins",
+      "targetValue": 150
+    },
+    {
+      "avatarKey": "粉旗鱼.png",
+      "unlockType": "total_checkins",
+      "targetValue": 150
+    },
+    {
+      "avatarKey": "婉尼拉.png",
+      "unlockType": "total_checkins",
+      "targetValue": 365
+    },
+    {
+      "avatarKey": "黑天鹅.png",
+      "unlockType": "total_checkins",
+      "targetValue": 365
+    },
+    {
+      "avatarKey": "约瑟芬.png",
+      "unlockType": "total_checkins",
+      "targetValue": 365
+    },
+    {
+      "avatarKey": "阿雅.png",
+      "unlockType": "total_checkins",
+      "targetValue": 365
+    },
+    {
+      "avatarKey": "洒金.png",
+      "unlockType": "total_checkins",
+      "targetValue": 365
     }
   ]
 }
