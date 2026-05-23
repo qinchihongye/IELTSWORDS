@@ -32,11 +32,6 @@ if BUILTIN_AVATAR_UPLOAD_DIR.exists():
     ]
 VIP_ONLY_BUILTIN_AVATAR_KEYS = {
     "花舞霓裳.png",
-    "石灰灯.png",
-    "香草草莓.png",
-    "白二岐.png",
-    "幻想曲.png",
-    "雪后.png",
 }
 LEGACY_BUILTIN_AVATAR_KEYS = [
     "三河千鸟.png",
