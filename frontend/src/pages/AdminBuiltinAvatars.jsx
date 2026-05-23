@@ -190,9 +190,11 @@ const AdminBuiltinAvatars = () => {
 
   // Filtered List
   const filteredAvatars = avatars.filter((item) => {
+    const normalizedQuery = searchQuery.toLowerCase();
     const matchesSearch =
-      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.key.toLowerCase().includes(searchQuery.toLowerCase());
+      item.label.toLowerCase().includes(normalizedQuery) ||
+      item.key.toLowerCase().includes(normalizedQuery) ||
+      String(item.variety || '').toLowerCase().includes(normalizedQuery);
 
     if (filterType === 'default') {
       return matchesSearch && item.is_hardcoded;
@@ -239,8 +241,18 @@ const AdminBuiltinAvatars = () => {
         return;
       }
       
-      const existingNames = new Set(avatars.map(a => a.label));
-      const queue = files.filter(f => !existingNames.has(f.avatars_name));
+      const existingAvatarsMap = new Map(avatars.map(a => [a.label, a]));
+      const queue = files.filter(f => {
+        const existing = existingAvatarsMap.get(f.avatars_name);
+        if (!existing) return true; // New avatar
+        // Check if modified (allow small floating point variance, strictly > 1 second difference)
+        if (f.source_mtime && existing.source_mtime) {
+          if (f.source_mtime > existing.source_mtime + 1) {
+            return true; // Modified
+          }
+        }
+        return false;
+      });
       
       if (queue.length === 0) {
         message.info({ content: '选定的预设文件夹中没有发现新头像，或所有头像均已存在', key: 'presetScan' });
@@ -286,6 +298,9 @@ const AdminBuiltinAvatars = () => {
       if (currentBatchItem) {
         formData.append('variety', currentBatchItem.variety);
         formData.append('avatars_name', currentBatchItem.avatars_name);
+        if (currentBatchItem.source_mtime) {
+          formData.append('source_mtime', currentBatchItem.source_mtime);
+        }
       }
       
       await apiClient.post('/api/admin/builtin-avatars/upload', formData, {
@@ -326,10 +341,6 @@ const AdminBuiltinAvatars = () => {
   };
 
   const handleDelete = useCallback((item) => {
-    if (item.is_hardcoded) {
-      message.warning('默认内置头像无法删除');
-      return;
-    }
     Modal.confirm({
       title: '确认删除内置头像',
       icon: <InfoCircleOutlined style={{ color: '#ef4444' }} />,
@@ -391,10 +402,15 @@ const AdminBuiltinAvatars = () => {
       render: (text) => <Text strong style={{ color: '#1e293b', fontSize: '14px' }}>{text}</Text>,
     },
     {
-      title: '唯一文件名 / Key',
-      dataIndex: 'key',
-      key: 'key',
-      render: (text) => <Text code style={{ fontSize: '12px', background: 'rgba(241, 245, 249, 0.7)' }}>{text}</Text>,
+      title: '品种',
+      dataIndex: 'variety',
+      key: 'variety',
+      width: 130,
+      render: (text) => (
+        <Tag color="blue" style={{ borderRadius: '6px', fontWeight: 600 }}>
+          {text || '未分类'}
+        </Tag>
+      ),
     },
     {
       title: '属性标识',
@@ -428,19 +444,17 @@ const AdminBuiltinAvatars = () => {
               className="table-action-btn"
             />
           </Tooltip>
-          {!record.is_hardcoded && (
-            <Tooltip title="永久删除">
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                loading={deletingKey === record.key}
-                onClick={() => handleDelete(record)}
-                style={{ fontSize: '16px' }}
-                className="table-action-btn danger"
-              />
-            </Tooltip>
-          )}
+          <Tooltip title="永久删除">
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingKey === record.key}
+              onClick={() => handleDelete(record)}
+              style={{ fontSize: '16px' }}
+              className="table-action-btn danger"
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -656,18 +670,16 @@ const AdminBuiltinAvatars = () => {
                               onClick={() => setPreviewItem(item)}
                               className="bubble-action-btn view"
                             />
-                            {!item.is_hardcoded && (
-                              <Button
-                                danger
-                                type="primary"
-                                shape="circle"
-                                icon={<DeleteOutlined />}
-                                size="small"
-                                loading={deletingKey === item.key}
-                                onClick={() => handleDelete(item)}
-                                className="bubble-action-btn del"
-                              />
-                            )}
+                            <Button
+                              danger
+                              type="primary"
+                              shape="circle"
+                              icon={<DeleteOutlined />}
+                              size="small"
+                              loading={deletingKey === item.key}
+                              onClick={() => handleDelete(item)}
+                              className="bubble-action-btn del"
+                            />
                           </Space>
                         </div>
                       </div>
@@ -687,7 +699,7 @@ const AdminBuiltinAvatars = () => {
             // REDESIGNED Glassmorphic Table/List View
             <div className="scalable-table-wrapper">
               <Table
-                dataSource={paginatedAvatars}
+                dataSource={filteredAvatars}
                 columns={columns}
                 rowKey="key"
                 pagination={false}
@@ -699,7 +711,7 @@ const AdminBuiltinAvatars = () => {
           )}
 
           {/* Shared Pagination component */}
-          {filteredAvatars.length > pageSize && (
+          {viewMode !== 'list' && filteredAvatars.length > pageSize && (
             <div className="workspace-pagination-wrapper">
               <Pagination
                 current={currentPage}
@@ -1377,10 +1389,6 @@ const css = `
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.table-key-code.ant-typography {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .table-action-btn.ant-btn {

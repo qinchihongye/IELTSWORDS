@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Button, Card, Form, Input, Space, Tag, Typography, message, Modal, Slider } from 'antd';
 import {
   DownloadOutlined,
@@ -19,6 +19,13 @@ import { BUILTIN_AVATAR_OPTIONS, fetchDynamicBuiltinAvatars } from '../utils/ava
 import { hasMinRole } from '../utils/roles';
 
 const { Title, Text } = Typography;
+
+const normalizeAvatarOption = (option = {}) => ({
+  ...option,
+  vipOnly: !!option.vip_only,
+  isHardcoded: !!option.is_hardcoded,
+  unlockSource: option.unlock_source || 'public',
+});
 
 // Utility to crop image inside a canvas and return a transparent PNG blob
 const getCroppedImg = (imageSrc, croppedAreaPixels) => {
@@ -81,6 +88,7 @@ const Profile = () => {
   const [passwordForm] = Form.useForm();
   const uploadInputRef = useRef(null);
   const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarCatalogLoading, setAvatarCatalogLoading] = useState(false);
   const canUseVipAvatar = hasMinRole(user, 'premium_user');
 
   // Cropper states
@@ -90,21 +98,45 @@ const Profile = () => {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [uploadFileName, setUploadFileName] = useState('');
   const [avatarOptions, setAvatarOptions] = useState(BUILTIN_AVATAR_OPTIONS);
+  const [nextUnlockCondition, setNextUnlockCondition] = useState('');
   const [activeTab, setActiveTab] = useState('basic');
   const [previewAvatar, setPreviewAvatar] = useState(null);
 
   const groupedAvatars = useMemo(() => {
     const normal = [];
     const vip = [];
+    const chapter = [];
     avatarOptions.forEach((option) => {
-      if (option.vipOnly) {
+      if (option.unlockSource === 'chapter_completion') {
+        chapter.push(option);
+      } else if (option.vipOnly) {
         vip.push(option);
       } else {
         normal.push(option);
       }
     });
-    return { normal, vip };
+    return { chapter, normal, vip };
   }, [avatarOptions]);
+
+  const loadAvatarCatalog = useCallback(async () => {
+    setAvatarCatalogLoading(true);
+    try {
+      await fetchDynamicBuiltinAvatars();
+      const response = await apiClient.get('/api/avatars/me/options');
+      setAvatarOptions((response.data?.avatars || []).map(normalizeAvatarOption));
+      setNextUnlockCondition(response.data?.next_unlock_condition || '');
+    } catch (error) {
+      console.error('加载头像选项失败:', error);
+      await fetchDynamicBuiltinAvatars();
+      setAvatarOptions(BUILTIN_AVATAR_OPTIONS.map((option) => ({
+        ...option,
+        unlockSource: option.vipOnly ? 'vip' : 'public',
+      })));
+      setNextUnlockCondition('');
+    } finally {
+      setAvatarCatalogLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     profileForm.setFieldsValue({
@@ -114,12 +146,68 @@ const Profile = () => {
   }, [profileForm, user?.email, user?.username]);
 
   useEffect(() => {
-    const loadDynamic = async () => {
-      await fetchDynamicBuiltinAvatars();
-      setAvatarOptions([...BUILTIN_AVATAR_OPTIONS]);
-    };
-    loadDynamic();
-  }, []);
+    if (!user) {
+      return;
+    }
+    loadAvatarCatalog();
+  }, [loadAvatarCatalog, user]);
+
+  const renderAvatarGroup = (title, options, sectionClassName = '') => {
+    if (!options.length) {
+      return null;
+    }
+
+    return (
+      <div className={`profile-avatar-group-section ${sectionClassName}`.trim()}>
+        <div className={`profile-avatar-group-title ${sectionClassName}`.trim()}>{title}</div>
+        <div className="profile-avatar-grid">
+          {options.map((option) => {
+            const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
+            const locked = option.vipOnly && !canUseVipAvatar;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
+                onClick={() => {
+                  if (locked) {
+                    message.warning(`${option.label}头像仅 VIP 用户及以上可设置`);
+                    return;
+                  }
+                  handleBuiltinAvatarSelect(option.key);
+                }}
+                disabled={avatarSaving}
+                aria-disabled={locked}
+              >
+                <div style={{ position: 'relative', display: 'inline-flex' }}>
+                  <UserAvatar
+                    user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                    size={56}
+                  />
+                  {option.vipOnly && (
+                    <div className="avatar-tag-overlay vip" title="VIP 专属">
+                      👑
+                    </div>
+                  )}
+                  <div
+                    className="avatar-zoom-trigger"
+                    title={`预览 ${option.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewAvatar(option);
+                    }}
+                  >
+                    🔍
+                  </div>
+                </div>
+                <span className="avatar-option-label">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const handleExport = async () => {
     try {
@@ -298,7 +386,7 @@ const Profile = () => {
             <UserOutlined style={{ color: '#6366f1' }} /> 头像修改
           </div>
           <Text type="secondary" style={{ fontSize: '13px', fontWeight: 'normal' }}>
-            🔍 可放大预览，👑 标识的头像为 VIP 用户及以上专属。
+            🔍 可放大预览，👑 标识的头像为 VIP 用户及以上专属，章节头像会随学习进度逐步解锁。
           </Text>
         </div>
         <div className="profile-avatar-panel">
@@ -353,106 +441,25 @@ const Profile = () => {
           </div>
 
           <div className="profile-avatar-picker">
-
-
             <div className="profile-avatar-group-container">
-              <div className="profile-avatar-group-section">
-                <div className="profile-avatar-group-title vip">VIP 专属头像</div>
-                <div className="profile-avatar-grid">
-                  {groupedAvatars.vip.map((option) => {
-                    const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
-                    const locked = option.vipOnly && !canUseVipAvatar;
-                    return (
-                      <button
-                        key={option.key}
-                        type="button"
-                        className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
-                        onClick={() => {
-                          if (locked) {
-                            message.warning(`${option.label}头像仅 VIP 用户及以上可设置`);
-                            return;
-                          }
-                          handleBuiltinAvatarSelect(option.key);
-                        }}
-                        disabled={avatarSaving}
-                        aria-disabled={locked}
-                      >
-                        <div style={{ position: 'relative', display: 'inline-flex' }}>
-                          <UserAvatar
-                            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
-                            size={56}
-                          />
-                          {option.vipOnly && (
-                            <div className="avatar-tag-overlay vip" title="VIP 专属">
-                              👑
-                            </div>
-                          )}
-                          <div
-                            className="avatar-zoom-trigger"
-                            title={`预览 ${option.label}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPreviewAvatar(option);
-                            }}
-                          >
-                            🔍
-                          </div>
-                        </div>
-                        <span className="avatar-option-label">{option.label}</span>
-                      </button>
-                    );
-                  })}
+              {nextUnlockCondition && (
+                <div className="profile-avatar-unlock-preview">
+                  <div className="profile-avatar-unlock-preview__title">下一阶段预告</div>
+                  <div className="profile-avatar-unlock-preview__body">{nextUnlockCondition}</div>
                 </div>
-              </div>
-
-              <div className="profile-avatar-group-section" style={{ marginTop: '20px' }}>
-                <div className="profile-avatar-group-title">普通头像</div>
-                <div className="profile-avatar-grid">
-                  {groupedAvatars.normal.map((option) => {
-                    const selected = user?.avatar_type === 'builtin' && user?.avatar_value === option.key;
-                    const locked = option.vipOnly && !canUseVipAvatar;
-                    return (
-                      <button
-                        key={option.key}
-                        type="button"
-                        className={`profile-avatar-option ${selected ? 'profile-avatar-option--selected' : ''} ${locked ? 'profile-avatar-option--locked' : ''}`}
-                        onClick={() => {
-                          if (locked) {
-                            message.warning(`${option.label}头像仅 VIP 用户及以上可设置`);
-                            return;
-                          }
-                          handleBuiltinAvatarSelect(option.key);
-                        }}
-                        disabled={avatarSaving}
-                        aria-disabled={locked}
-                      >
-                        <div style={{ position: 'relative', display: 'inline-flex' }}>
-                          <UserAvatar
-                            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
-                            size={56}
-                          />
-                          {option.vipOnly && (
-                            <div className="avatar-tag-overlay vip" title="VIP 专属">
-                              👑
-                            </div>
-                          )}
-                          <div
-                            className="avatar-zoom-trigger"
-                            title={`预览 ${option.label}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPreviewAvatar(option);
-                            }}
-                          >
-                            🔍
-                          </div>
-                        </div>
-                        <span className="avatar-option-label">{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              )}
+              {avatarCatalogLoading ? (
+                <div className="profile-avatar-empty">头像列表加载中...</div>
+              ) : (
+                <>
+                  {renderAvatarGroup('章节解锁头像', groupedAvatars.chapter, 'chapter')}
+                  {renderAvatarGroup('VIP 专属头像', groupedAvatars.vip, 'vip')}
+                  {renderAvatarGroup('普通头像', groupedAvatars.normal)}
+                  {!groupedAvatars.chapter.length && !groupedAvatars.vip.length && !groupedAvatars.normal.length && (
+                    <div className="profile-avatar-empty">当前没有可用的内置头像</div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -572,7 +579,7 @@ const Profile = () => {
             }}
           />
           <span style={{ color: '#6b7280', fontSize: 14 }}>
-            {previewAvatar?.label} {previewAvatar?.vipOnly ? '(VIP 专属)' : ''}
+            {previewAvatar?.label} {previewAvatar?.vipOnly ? '(VIP 专属)' : previewAvatar?.unlockSource === 'chapter_completion' ? '(章节解锁)' : ''}
           </span>
         </div>
       </Modal>
@@ -780,6 +787,27 @@ const css = `
   gap: 20px;
 }
 
+.profile-avatar-unlock-preview {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(255, 255, 255, 0.94) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.14);
+}
+
+.profile-avatar-unlock-preview__title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #4f46e5;
+}
+
+.profile-avatar-unlock-preview__body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
+}
+
 .profile-avatar-group-section {
   display: flex;
   flex-direction: column;
@@ -810,6 +838,14 @@ const css = `
 
 .profile-avatar-group-title.vip::before {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.profile-avatar-group-title.chapter {
+  color: #0f766e;
+}
+
+.profile-avatar-group-title.chapter::before {
+  background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
 }
 
 .profile-avatar-grid {
@@ -949,6 +985,16 @@ const css = `
 .profile-avatar-option:disabled {
   cursor: wait;
   opacity: 0.75;
+}
+
+.profile-avatar-empty {
+  padding: 24px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
 }
 
 /* Interactive Circular Cropper Modal Custom Styles */

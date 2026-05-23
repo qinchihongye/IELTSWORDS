@@ -1,0 +1,64 @@
+{
+  "rules": [
+    {
+      "avatarKey": "白色恋人.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "1"
+    },
+    {
+      "avatarKey": "胡椒薄荷.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "2"
+    },
+    {
+      "avatarKey": "夏日微风.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "3"
+    },
+    {
+      "avatarKey": "丹霞雀斑.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "4"
+    },
+    {
+      "avatarKey": "白蝴蝶.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "5"
+    },
+    {
+      "avatarKey": "幻想曲.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "6"
+    },
+    {
+      "avatarKey": "玛菲特小姐.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "7"
+    },
+    {
+      "avatarKey": "彩云.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "8"
+    },
+    {
+      "avatarKey": "娇羞新娘.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "9"
+    },
+    {
+      "avatarKey": "白月光.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "10"
+    },
+    {
+      "avatarKey": "苹果花.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "11"
+    },
+    {
+      "avatarKey": "甜心.png",
+      "unlockType": "chapter_completion",
+      "chapterNo": "12"
+    }
+  ]
+}

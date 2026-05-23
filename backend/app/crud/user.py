@@ -12,7 +12,7 @@ import re
 import uuid
 
 from .. import models, schemas, auth
-from ..avatar_storage import DEFAULT_BUILTIN_AVATAR_KEY, delete_uploaded_avatar_file
+from ..avatar_storage import delete_uploaded_avatar_file, get_role_default_builtin_avatar_key
 
 
 from sqlalchemy import desc
@@ -38,13 +38,14 @@ def _generate_uid(db: Session) -> str:
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """创建用户"""
     hashed_password = auth.get_password_hash(user.password)
+    user_role = getattr(user, "role", "user")
     db_user = models.User(
         uid=_generate_uid(db),
         username=user.username,
         email=user.email,
         hashed_password=hashed_password,
         avatar_type='builtin',
-        avatar_value=DEFAULT_BUILTIN_AVATAR_KEY,
+        avatar_value=get_role_default_builtin_avatar_key(user_role),
     )
     db.add(db_user)
     db.commit()
@@ -52,8 +53,11 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     return db_user
 
 def authenticate_user(db: Session, username: str, password: str) -> Optional[models.User]:
-    """验证用户"""
-    user = get_user_by_username(db, username)
+    """验证用户，支持用户名或邮箱登录"""
+    identifier = (username or "").strip()
+    user = get_user_by_username(db, identifier)
+    if not user and identifier:
+        user = db.query(models.User).filter(func.lower(models.User.email) == identifier.lower()).first()
     if not user:
         return None
     if not auth.verify_password(password, user.hashed_password):

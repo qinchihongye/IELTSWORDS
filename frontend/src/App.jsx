@@ -36,6 +36,7 @@ const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminContent = lazy(() => import('./pages/AdminContent'));
 const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
 const AdminBuiltinAvatars = lazy(() => import('./pages/AdminBuiltinAvatars'));
+const AdminAvatarUnlockRules = lazy(() => import('./pages/AdminAvatarUnlockRules'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 // 路由级全局加载骨架
@@ -106,6 +107,7 @@ function App() {
                 <Route path="admin/content" element={<ProtectedRoute minRole="admin"><AdminContent /></ProtectedRoute>} />
                 <Route path="admin/super" element={<ProtectedRoute minRole="super_admin"><SuperAdmin /></ProtectedRoute>} />
                 <Route path="admin/avatars" element={<ProtectedRoute minRole="super_admin"><AdminBuiltinAvatars /></ProtectedRoute>} />
+                <Route path="admin/avatar-unlocks" element={<ProtectedRoute minRole="super_admin"><AdminAvatarUnlockRules /></ProtectedRoute>} />
               </Route>
 
               {/* 404 页面 */}

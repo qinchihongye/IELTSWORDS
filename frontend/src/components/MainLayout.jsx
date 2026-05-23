@@ -15,7 +15,8 @@ import {
   CalendarOutlined,
   EditOutlined,
   BookOutlined,
-  PictureOutlined
+  PictureOutlined,
+  BranchesOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -197,6 +198,11 @@ const MainLayout = () => {
               key: '/admin/avatars',
               icon: <PictureOutlined />,
               label: '内置头像',
+            },
+            {
+              key: '/admin/avatar-unlocks',
+              icon: <BranchesOutlined />,
+              label: '头像解锁',
             },
           ] : []),
         ],

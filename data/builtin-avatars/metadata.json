@@ -419,10 +419,6 @@
     "variety": "彩叶芋",
     "avatars_name": "白色恋人"
   },
-  "甜心.png": {
-    "variety": "彩叶芋",
-    "avatars_name": "甜心"
-  },
   "胡椒薄荷.png": {
     "variety": "彩叶芋",
     "avatars_name": "胡椒薄荷"
@@ -682,5 +678,10 @@
   "点绛唇.png": {
     "variety": "秋海棠",
     "avatars_name": "点绛唇"
+  },
+  "甜心.png": {
+    "variety": "彩叶芋",
+    "avatars_name": "甜心",
+    "source_mtime": 1779504218.717522
   }
 }

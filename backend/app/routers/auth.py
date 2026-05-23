@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 import secrets
+from ..avatar_unlocks import can_user_select_builtin_avatar
 from ..avatar_storage import (
     delete_uploaded_avatar_file,
     is_vip_only_builtin_avatar,
@@ -183,10 +184,13 @@ async def update_current_user_builtin_avatar(
     切换为内置头像
     """
     avatar_key = validate_builtin_avatar_key(payload.avatar_key)
-    if is_vip_only_builtin_avatar(avatar_key) and not has_min_role(current_user, "premium_user"):
+    if not can_user_select_builtin_avatar(db, current_user, avatar_key):
+        detail = "该头像尚未解锁"
+        if is_vip_only_builtin_avatar(avatar_key) and not has_min_role(current_user, "premium_user"):
+            detail = "该头像仅 VIP 用户及以上可使用"
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="该头像仅 VIP 用户及以上可使用",
+            detail=detail,
         )
 
     if current_user.avatar_type == "upload":

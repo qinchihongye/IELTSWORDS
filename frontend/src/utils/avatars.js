@@ -1,10 +1,7 @@
 import apiClient from '../api/client';
 import config from '../config/settings';
 
-const BUILTIN_AVATAR_FILES = [
-  '恋物语.png'
-];
-
+const PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY = '恋物语.png';
 const LEGACY_BUILTIN_AVATAR_FILES = [
   '三河千鸟.png',
   '恋物语.png',
@@ -15,7 +12,7 @@ const LEGACY_BUILTIN_AVATAR_FILES = [
   '魔幻海洋.png',
 ];
 
-export const DEFAULT_BUILTIN_AVATAR_KEY = BUILTIN_AVATAR_FILES.includes('恋物语.png') ? '恋物语.png' : (BUILTIN_AVATAR_FILES[0] || '');
+export const DEFAULT_BUILTIN_AVATAR_KEY = '';
 const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
   '花舞霓裳.png',
   '石灰灯.png',
@@ -24,9 +21,6 @@ const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
   '幻想曲.png',
   '雪后.png',
 ]);
-
-
-
 
 const LEGACY_BUILTIN_AVATAR_KEY_MAP = Object.fromEntries(
   LEGACY_BUILTIN_AVATAR_FILES.map((fileName, index) => [`avatar-${String(index + 1).padStart(2, '0')}`, fileName])
@@ -38,42 +32,43 @@ const LEGACY_RENAMED_BUILTIN_AVATAR_KEY_MAP = {
   '萨利安.jpg': '萨利安.png',
 };
 
-const getAvatarLabel = (fileName) => fileName.replace(/\.[^.]+$/, '');
-
 const builtinApiBase = config.api.baseURL.replace(/\/$/, '');
 
-const getBuiltinSrc = (filename) => {
-  return `${builtinApiBase}/builtin-avatars/${filename}`;
+const getAvatarLabel = (fileName = '') => fileName.replace(/\.[^.]+$/, '');
+
+const normalizeBuiltinAvatarCandidate = (avatarKey = '') => {
+  const value = String(avatarKey || '').trim();
+  if (!value) {
+    return '';
+  }
+
+  return LEGACY_RENAMED_BUILTIN_AVATAR_KEY_MAP[value]
+    || LEGACY_BUILTIN_AVATAR_KEY_MAP[value]
+    || value;
 };
 
-export let BUILTIN_AVATAR_OPTIONS = BUILTIN_AVATAR_FILES.map((fileName) => ({
-  key: fileName,
-  label: getAvatarLabel(fileName),
-  src: getBuiltinSrc(fileName),
-  vipOnly: VIP_ONLY_BUILTIN_AVATAR_KEYS.has(fileName),
-}));
+const getBuiltinSrc = (filename) => (filename ? `${builtinApiBase}/builtin-avatars/${filename}` : null);
+
+const getDefaultBuiltinAvatarKey = () => {
+  if (dynamicBuiltinCache.some((item) => item.key === PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY)) {
+    return PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY;
+  }
+
+  return dynamicBuiltinCache[0]?.key || DEFAULT_BUILTIN_AVATAR_KEY;
+};
+
+export let BUILTIN_AVATAR_OPTIONS = [];
 
 let dynamicBuiltinCache = [];
 
 const refreshBuiltinOptions = () => {
-  const dynamicOptions = dynamicBuiltinCache.map((item) => ({
+  BUILTIN_AVATAR_OPTIONS = dynamicBuiltinCache.map((item) => ({
     key: item.key,
     label: item.label,
     src: `${builtinApiBase}${item.url}`,
     vipOnly: item.vip_only,
+    variety: item.variety || '',
   }));
-  const hardcodedKeys = new Set(BUILTIN_AVATAR_FILES);
-  const filteredDynamicOptions = dynamicOptions.filter((item) => !hardcodedKeys.has(item.key));
-  
-  BUILTIN_AVATAR_OPTIONS = [
-    ...BUILTIN_AVATAR_FILES.map((fileName) => ({
-      key: fileName,
-      label: getAvatarLabel(fileName),
-      src: getBuiltinSrc(fileName),
-      vipOnly: VIP_ONLY_BUILTIN_AVATAR_KEYS.has(fileName),
-    })),
-    ...filteredDynamicOptions,
-  ];
 };
 
 export const fetchDynamicBuiltinAvatars = async () => {
@@ -82,7 +77,8 @@ export const fetchDynamicBuiltinAvatars = async () => {
     dynamicBuiltinCache = response.data || [];
     refreshBuiltinOptions();
   } catch {
-    // Silently fail — bundled avatars still work
+    dynamicBuiltinCache = [];
+    refreshBuiltinOptions();
   }
   return dynamicBuiltinCache;
 };
@@ -90,47 +86,51 @@ export const fetchDynamicBuiltinAvatars = async () => {
 export const getDynamicBuiltinAvatars = () => dynamicBuiltinCache;
 
 export const normalizeBuiltinAvatarKey = (avatarKey = DEFAULT_BUILTIN_AVATAR_KEY) => {
-  const value = avatarKey?.trim();
-  if (!value) {
-    return DEFAULT_BUILTIN_AVATAR_KEY;
+  const candidate = normalizeBuiltinAvatarCandidate(avatarKey);
+  if (candidate && (dynamicBuiltinCache.length === 0 || dynamicBuiltinCache.some((item) => item.key === candidate))) {
+    return candidate;
   }
 
-
-
-  if (dynamicBuiltinCache.some((item) => item.key === value)) {
-    return value;
-  }
-
-  return LEGACY_RENAMED_BUILTIN_AVATAR_KEY_MAP[value]
-    || LEGACY_BUILTIN_AVATAR_KEY_MAP[value]
-    || DEFAULT_BUILTIN_AVATAR_KEY;
+  return getDefaultBuiltinAvatarKey();
 };
 
 export const getBuiltinAvatarOption = (avatarKey = DEFAULT_BUILTIN_AVATAR_KEY) => {
   const normalizedKey = normalizeBuiltinAvatarKey(avatarKey);
   const option = BUILTIN_AVATAR_OPTIONS.find((item) => item.key === normalizedKey);
-  if (option) return option;
-  
+  if (option) {
+    return option;
+  }
+
+  if (normalizedKey) {
+    return {
+      key: normalizedKey,
+      label: getAvatarLabel(normalizedKey),
+      src: getBuiltinSrc(normalizedKey),
+      vipOnly: VIP_ONLY_BUILTIN_AVATAR_KEYS.has(normalizedKey),
+      variety: '',
+    };
+  }
+
   if (BUILTIN_AVATAR_OPTIONS.length > 0) {
     return BUILTIN_AVATAR_OPTIONS[0];
   }
-  
+
   return {
     key: DEFAULT_BUILTIN_AVATAR_KEY,
-    label: getAvatarLabel(DEFAULT_BUILTIN_AVATAR_KEY),
-    src: getBuiltinSrc(DEFAULT_BUILTIN_AVATAR_KEY),
+    label: '默认头像',
+    src: null,
     vipOnly: false,
+    variety: '',
   };
 };
 
 export const isBuiltinAvatarVipOnly = (avatarKey) => (
-  VIP_ONLY_BUILTIN_AVATAR_KEYS.has(normalizeBuiltinAvatarKey(avatarKey))
+  VIP_ONLY_BUILTIN_AVATAR_KEYS.has(normalizeBuiltinAvatarCandidate(avatarKey))
 );
-
 
 export const getAvatarSrc = (userLike) => {
   if (!userLike) {
-    return getBuiltinSrc(DEFAULT_BUILTIN_AVATAR_KEY);
+    return getBuiltinAvatarOption().src;
   }
 
   if (userLike.avatar_type === 'upload' && userLike.avatar_value) {
@@ -142,11 +142,13 @@ export const getAvatarSrc = (userLike) => {
       return new URL(userLike.avatar_value, `${builtinApiBase}/`).href;
     } catch (error) {
       console.error('解析上传头像地址失败:', error);
+      return null;
     }
   }
 
   if (userLike.avatar_type === 'builtin' || !userLike.avatar_type) {
-    return getBuiltinSrc(userLike.avatar_value || DEFAULT_BUILTIN_AVATAR_KEY);
+    const option = getBuiltinAvatarOption(userLike.avatar_value || DEFAULT_BUILTIN_AVATAR_KEY);
+    return option?.src || null;
   }
 
   return getBuiltinAvatarOption(userLike.avatar_value).src;
@@ -168,5 +170,5 @@ export const getAvatarName = (userLike) => {
     return '自定义上传头像';
   }
   const option = getBuiltinAvatarOption(userLike.avatar_value);
-  return option ? option.label : '默认头像';
+  return option?.label || '默认头像';
 };

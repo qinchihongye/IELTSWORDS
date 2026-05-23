@@ -11,15 +11,21 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import auth, crud, models, schemas
+from ..avatar_unlocks import (
+    CHAPTER_COMPLETION_UNLOCK,
+    load_avatar_unlock_rules,
+    save_avatar_unlock_rules,
+)
 from ..avatar_storage import (
     BUILTIN_AVATAR_URL_PREFIX,
-    DEFAULT_BUILTIN_AVATAR_KEY,
     VIP_ONLY_BUILTIN_AVATAR_KEYS,
     delete_builtin_avatar_file,
     delete_uploaded_avatar_file,
     get_all_builtin_avatar_keys,
+    get_role_default_builtin_avatar_key,
     is_hardcoded_builtin_avatar,
     is_vip_only_builtin_avatar,
+    load_builtin_avatar_metadata,
     save_builtin_avatar,
 )
 from ..database import get_db
@@ -90,6 +96,7 @@ async def create_user(
     user = crud.create_user(db, payload)
     user.role = payload.role
     user.is_active = True
+    user.avatar_value = get_role_default_builtin_avatar_key(payload.role)
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -161,10 +168,10 @@ async def update_user_role(
         and is_vip_only_builtin_avatar(user.avatar_value)
         and not has_min_role(user, "premium_user")
     ):
-        user.avatar_value = DEFAULT_BUILTIN_AVATAR_KEY
+        user.avatar_value = get_role_default_builtin_avatar_key(user.role)
     elif user.avatar_type == "upload" and not has_min_role(user, "premium_user"):
         user.avatar_type = "builtin"
-        user.avatar_value = DEFAULT_BUILTIN_AVATAR_KEY
+        user.avatar_value = get_role_default_builtin_avatar_key(user.role)
 
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -273,15 +280,133 @@ def _get_label(filename: str) -> str:
     return filename.rsplit(".", 1)[0]
 
 
+def _get_avatar_admin_label(filename: str, metadata: dict[str, dict]) -> str:
+    item = metadata.get(filename) or {}
+    return str(item.get("avatars_name") or "").strip() or _get_label(filename)
+
+
+def build_avatar_unlock_rules_response(db: Session) -> dict:
+    metadata = load_builtin_avatar_metadata()
+    chapters = crud.get_all_chapters(db)
+    chapter_map = {
+        str(chapter["chapterNo"]): str(chapter["chapterName"] or "")
+        for chapter in chapters
+    }
+
+    configured_rules = load_avatar_unlock_rules()
+    configured_avatar_keys = {rule.avatar_key for rule in configured_rules}
+
+    rules = [
+        {
+            "avatar_key": rule.avatar_key,
+            "avatar_label": _get_avatar_admin_label(rule.avatar_key, metadata),
+            "variety": str((metadata.get(rule.avatar_key) or {}).get("variety") or "").strip() or "未分类",
+            "vip_only": rule.avatar_key in VIP_ONLY_BUILTIN_AVATAR_KEYS,
+            "unlock_type": rule.unlock_type,
+            "chapter_no": str(rule.chapter_no or ""),
+            "chapter_name": chapter_map.get(str(rule.chapter_no or "")) or None,
+            "min_role": rule.min_role or None,
+        }
+        for rule in configured_rules
+    ]
+
+    available_avatars = [
+        {
+            "key": key,
+            "label": _get_avatar_admin_label(key, metadata),
+            "variety": str((metadata.get(key) or {}).get("variety") or "").strip() or "未分类",
+            "vip_only": key in VIP_ONLY_BUILTIN_AVATAR_KEYS,
+            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{key}",
+            "is_hardcoded": is_hardcoded_builtin_avatar(key),
+            "unlock_source": CHAPTER_COMPLETION_UNLOCK if key in configured_avatar_keys else None,
+        }
+        for key in get_all_builtin_avatar_keys()
+    ]
+
+    return {
+        "rules": rules,
+        "available_avatars": available_avatars,
+        "available_chapters": chapters,
+    }
+
+
+@router.get("/avatar-unlock-rules", response_model=schemas.AdminAvatarUnlockRulesResponse)
+async def get_avatar_unlock_rules(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_super_admin),
+):
+    return build_avatar_unlock_rules_response(db)
+
+
+@router.put("/avatar-unlock-rules", response_model=schemas.AdminAvatarUnlockRulesResponse)
+async def update_avatar_unlock_rules(
+    payload: schemas.AdminAvatarUnlockRulesUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_super_admin),
+):
+    available_avatar_keys = set(get_all_builtin_avatar_keys())
+    chapter_map = {
+        str(chapter["chapterNo"]): str(chapter["chapterName"] or "")
+        for chapter in crud.get_all_chapters(db)
+    }
+
+    seen_avatar_keys: set[str] = set()
+    normalized_rules: list[dict] = []
+
+    for item in payload.rules:
+        avatar_key = str(item.avatar_key or "").strip()
+        chapter_no = str(item.chapter_no or "").strip()
+
+        if not avatar_key or avatar_key not in available_avatar_keys:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"头像 {avatar_key or '[空]'} 不存在",
+            )
+
+        if avatar_key in seen_avatar_keys:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"头像 {avatar_key} 重复配置了解锁规则",
+            )
+        seen_avatar_keys.add(avatar_key)
+
+        if item.unlock_type != CHAPTER_COMPLETION_UNLOCK:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="当前仅支持按章节完成解锁",
+            )
+
+        if chapter_no not in chapter_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"章节 {chapter_no or '[空]'} 不存在",
+            )
+
+        normalized_rule = {
+            "avatarKey": avatar_key,
+            "unlockType": CHAPTER_COMPLETION_UNLOCK,
+            "chapterNo": chapter_no,
+        }
+        if item.min_role and item.min_role != "user":
+            normalized_rule["minRole"] = item.min_role
+        normalized_rules.append(normalized_rule)
+
+    save_avatar_unlock_rules(normalized_rules)
+    return build_avatar_unlock_rules_response(db)
+
+
 @router.get("/builtin-avatars")
 async def list_builtin_avatars(
     current_user=Depends(require_super_admin),
 ):
     keys = get_all_builtin_avatar_keys()
+    metadata = load_builtin_avatar_metadata()
     return [
         {
             "key": k,
             "label": _get_label(k),
+            "variety": str((metadata.get(k) or {}).get("variety") or "").strip() or "未分类",
+            "source_mtime": (metadata.get(k) or {}).get("source_mtime"),
             "vip_only": k in VIP_ONLY_BUILTIN_AVATAR_KEYS,
             "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{k}",
             "is_hardcoded": is_hardcoded_builtin_avatar(k),
@@ -311,10 +436,12 @@ async def list_preset_avatar_files(current_user=Depends(require_super_admin)):
                 
                 # We need the relative path to build the URL
                 url_path = f"{rel_dir}/{file}" if rel_dir != "." else file
+                source_mtime = os.path.getmtime(os.path.join(root, file))
                 files_list.append({
                     "url": f"/preset-avatars/{url_path}",
                     "variety": variety,
-                    "avatars_name": avatars_name
+                    "avatars_name": avatars_name,
+                    "source_mtime": source_mtime
                 })
     return files_list
 
@@ -323,16 +450,30 @@ async def upload_builtin_avatar(
     file: UploadFile = File(...),
     variety: str | None = Form(None),
     avatars_name: str | None = Form(None),
+    source_mtime: float | None = Form(None),
     current_user=Depends(require_super_admin),
 ):
-    url = await save_builtin_avatar(file, variety=variety, avatars_name=avatars_name)
+    url = await save_builtin_avatar(file, variety=variety, avatars_name=avatars_name, source_mtime=source_mtime)
     return {"url": url, "filename": file.filename}
 
 
 @router.delete("/builtin-avatars/{filename}")
 async def remove_builtin_avatar(
     filename: str,
+    db: Session = Depends(get_db),
     current_user=Depends(require_super_admin),
 ):
     delete_builtin_avatar_file(filename)
+
+    affected_users = db.query(models.User).filter(
+        models.User.avatar_type == "builtin",
+        models.User.avatar_value == filename,
+    ).all()
+    for user in affected_users:
+        user.avatar_value = get_role_default_builtin_avatar_key(user.role)
+        user.updated_at = datetime.now(timezone.utc)
+
+    if affected_users:
+        db.commit()
+
     return {"message": f"内置头像 {filename} 已删除"}

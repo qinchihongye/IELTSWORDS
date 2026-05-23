@@ -1,19 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Form, Input, Select, Space, Table, Tag, Typography, message } from 'antd';
 import {
+  BranchesOutlined,
   CheckCircleOutlined,
   CrownOutlined,
+  PictureOutlined,
   ReloadOutlined,
   StopOutlined,
   UserAddOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/client';
 import { ROLE_COLORS, ROLE_LABELS, ROLE_OPTIONS } from '../utils/roles';
 
 const { Title, Text } = Typography;
 
 const SuperAdmin = () => {
+  const navigate = useNavigate();
   const [form] = Form.useForm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -131,9 +135,17 @@ const SuperAdmin = () => {
           <Title level={2} style={{ margin: 0 }}>超级管理员</Title>
           <Text type="secondary">系统级账户、角色和管理员入口。</Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
-          刷新
-        </Button>
+        <Space wrap>
+          <Button icon={<PictureOutlined />} onClick={() => navigate('/admin/avatars')}>
+            内置头像
+          </Button>
+          <Button icon={<BranchesOutlined />} onClick={() => navigate('/admin/avatar-unlocks')}>
+            头像解锁
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
+            刷新
+          </Button>
+        </Space>
       </div>
 
       <div className="super-admin-metrics">

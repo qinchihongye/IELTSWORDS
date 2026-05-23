@@ -8,10 +8,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from .avatar_storage import (
     DEFAULT_BUILTIN_AVATAR_KEY,
     delete_uploaded_avatar_file,
-    LEGACY_BUILTIN_AVATAR_KEY_MAP,
-    RENAMED_BUILTIN_AVATAR_KEY_MAP,
-    VALID_BUILTIN_AVATAR_KEYS,
-    VIP_ONLY_BUILTIN_AVATAR_KEYS,
+    get_role_default_builtin_avatar_key,
+    resolve_role_builtin_avatar_value,
 )
 from .config.settings import DATABASE_URL
 
@@ -32,19 +30,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def normalize_builtin_avatar_value(avatar_value: str | None) -> str:
-    value = (avatar_value or "").strip()
-    if not value:
-        return DEFAULT_BUILTIN_AVATAR_KEY
-
-    if value in VALID_BUILTIN_AVATAR_KEYS:
-        return value
-
-    renamed_value = RENAMED_BUILTIN_AVATAR_KEY_MAP.get(value)
-    if renamed_value:
-        return renamed_value
-
-    return LEGACY_BUILTIN_AVATAR_KEY_MAP.get(value, DEFAULT_BUILTIN_AVATAR_KEY)
+def normalize_builtin_avatar_value(avatar_value: str | None, role: str | None = None) -> str:
+    return resolve_role_builtin_avatar_value(avatar_value, role)
 
 
 def ensure_runtime_schema():
@@ -371,7 +358,7 @@ def ensure_runtime_schema():
                         WHERE id = :user_id
                         """),
                         {
-                            "avatar_value": DEFAULT_BUILTIN_AVATAR_KEY,
+                            "avatar_value": get_role_default_builtin_avatar_key(row["role"]),
                             "user_id": row["id"],
                         },
                     )
@@ -380,7 +367,7 @@ def ensure_runtime_schema():
                 if row["avatar_type"] != "builtin":
                     continue
 
-                normalized_value = normalize_builtin_avatar_value(row["avatar_value"])
+                normalized_value = normalize_builtin_avatar_value(row["avatar_value"], row["role"])
                 if normalized_value == row["avatar_value"]:
                     continue
 
@@ -390,29 +377,6 @@ def ensure_runtime_schema():
                         "avatar_value": normalized_value,
                         "user_id": row["id"],
                     },
-                )
-
-            vip_only_keys = tuple(VIP_ONLY_BUILTIN_AVATAR_KEYS)
-            if vip_only_keys:
-                placeholders = ", ".join(f":vip_only_avatar_{index}" for index, _ in enumerate(vip_only_keys))
-                params = {
-                    "default_avatar": DEFAULT_BUILTIN_AVATAR_KEY,
-                }
-                params.update(
-                    {
-                        f"vip_only_avatar_{index}": avatar_key
-                        for index, avatar_key in enumerate(vip_only_keys)
-                    }
-                )
-                connection.execute(
-                    text(f"""
-                    UPDATE users
-                    SET avatar_value = :default_avatar
-                    WHERE avatar_type = 'builtin'
-                      AND avatar_value IN ({placeholders})
-                      AND role NOT IN ('premium_user', 'admin', 'super_admin')
-                    """),
-                    params,
                 )
 
     for avatar_value in uploaded_avatar_values_to_delete:

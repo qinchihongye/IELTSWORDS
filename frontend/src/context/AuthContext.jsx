@@ -71,13 +71,13 @@ export const AuthProvider = ({ children }) => {
   // 登录
   const login = useCallback(async (username, password) => {
     try {
-      const formData = new FormData();
+      const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
 
       const response = await apiClient.post('/api/auth/login', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
       });
 

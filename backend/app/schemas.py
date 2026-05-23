@@ -79,6 +79,21 @@ class User(UserBase):
     class Config:
         from_attributes = True
 
+
+class BuiltinAvatarOption(BaseModel):
+    key: str
+    label: str
+    variety: str
+    vip_only: bool = False
+    url: str
+    is_hardcoded: bool = False
+    unlock_source: Optional[str] = None
+
+
+class CurrentUserAvatarCatalog(BaseModel):
+    avatars: List[BuiltinAvatarOption]
+    next_unlock_condition: Optional[str] = None
+
 class UserRoleUpdate(BaseModel):
     role: UserRole
 
@@ -166,6 +181,34 @@ class GroupInfo(BaseModel):
     learnedCount: int = 0
     isCompleted: bool = False
     isUnlocked: bool = True
+
+
+class AdminAvatarUnlockRuleItem(BaseModel):
+    avatar_key: str
+    avatar_label: str
+    variety: str
+    vip_only: bool = False
+    unlock_type: Literal['chapter_completion'] = 'chapter_completion'
+    chapter_no: str
+    chapter_name: Optional[str] = None
+    min_role: Optional[UserRole] = None
+
+
+class AdminAvatarUnlockRuleUpdateItem(BaseModel):
+    avatar_key: str
+    unlock_type: Literal['chapter_completion'] = 'chapter_completion'
+    chapter_no: str
+    min_role: Optional[UserRole] = None
+
+
+class AdminAvatarUnlockRulesUpdate(BaseModel):
+    rules: List[AdminAvatarUnlockRuleUpdateItem]
+
+
+class AdminAvatarUnlockRulesResponse(BaseModel):
+    rules: List[AdminAvatarUnlockRuleItem]
+    available_avatars: List[BuiltinAvatarOption]
+    available_chapters: List[ChapterInfo]
 
 # ============ 图片相关 ============
 

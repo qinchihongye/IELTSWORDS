@@ -47,7 +47,9 @@ LEGACY_BUILTIN_AVATAR_KEYS = [
     "香草草莓.png",
     "魔幻海洋.png",
 ]
-DEFAULT_BUILTIN_AVATAR_KEY = "恋物语.png"
+PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY = "恋物语.png"
+DEFAULT_BUILTIN_AVATAR_KEY = ""
+ROLES_WITH_VIP_BUILTIN_ACCESS = {"premium_user", "admin", "super_admin"}
 RENAMED_BUILTIN_AVATAR_KEY_MAP = {
     "石头灯.png": "石灰灯.png",
     "坦尼克.jpg": "坦尼克.png",
@@ -75,18 +77,67 @@ ALLOWED_MIME_TYPES = {
 }
 
 
-def normalize_builtin_avatar_key(avatar_key: str) -> str:
+def _normalize_builtin_avatar_candidate(avatar_key: str | None) -> str:
     value = (avatar_key or "").strip()
-    if value in VALID_BUILTIN_AVATAR_KEYS:
-        return value
+    if not value:
+        return ""
 
     renamed_key = RENAMED_BUILTIN_AVATAR_KEY_MAP.get(value)
     if renamed_key:
         return renamed_key
 
-    legacy_key = LEGACY_BUILTIN_AVATAR_KEY_MAP.get(value)
-    if legacy_key:
-        return legacy_key
+    return LEGACY_BUILTIN_AVATAR_KEY_MAP.get(value, value)
+
+
+def role_can_use_vip_builtin_avatar(role: str | None) -> bool:
+    return (role or "").strip() in ROLES_WITH_VIP_BUILTIN_ACCESS
+
+
+def get_default_builtin_avatar_key(include_vip: bool = True) -> str:
+    keys = get_all_builtin_avatar_keys()
+    if not include_vip:
+        keys = [key for key in keys if key not in VIP_ONLY_BUILTIN_AVATAR_KEYS]
+
+    if not keys:
+        return DEFAULT_BUILTIN_AVATAR_KEY
+
+    if PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY in keys:
+        return PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY
+
+    return keys[0]
+
+
+def get_role_default_builtin_avatar_key(role: str | None) -> str:
+    return get_default_builtin_avatar_key(include_vip=role_can_use_vip_builtin_avatar(role))
+
+
+def resolve_builtin_avatar_value(avatar_key: str | None, include_vip: bool = True) -> str:
+    value = _normalize_builtin_avatar_candidate(avatar_key)
+    valid_keys = set(get_all_builtin_avatar_keys())
+    if not include_vip:
+        valid_keys = {key for key in valid_keys if key not in VIP_ONLY_BUILTIN_AVATAR_KEYS}
+
+    if value in VALID_BUILTIN_AVATAR_KEYS:
+        if include_vip or value not in VIP_ONLY_BUILTIN_AVATAR_KEYS:
+            return value
+
+    if value in valid_keys:
+        return value
+
+    return get_default_builtin_avatar_key(include_vip=include_vip)
+
+
+def resolve_role_builtin_avatar_value(avatar_key: str | None, role: str | None) -> str:
+    return resolve_builtin_avatar_value(
+        avatar_key,
+        include_vip=role_can_use_vip_builtin_avatar(role),
+    )
+
+
+def normalize_builtin_avatar_key(avatar_key: str) -> str:
+    value = _normalize_builtin_avatar_candidate(avatar_key)
+    if value in VALID_BUILTIN_AVATAR_KEYS:
+        return value
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -99,7 +150,8 @@ def validate_builtin_avatar_key(avatar_key: str) -> str:
 
 
 def is_vip_only_builtin_avatar(avatar_key: str) -> bool:
-    return normalize_builtin_avatar_key(avatar_key) in VIP_ONLY_BUILTIN_AVATAR_KEYS
+    value = _normalize_builtin_avatar_candidate(avatar_key)
+    return value in VIP_ONLY_BUILTIN_AVATAR_KEYS
 
 
 def get_avatar_upload_url(filename: str) -> str:
@@ -226,14 +278,29 @@ def _scan_builtin_avatar_files() -> list[str]:
     return sorted(files)
 
 
+def load_builtin_avatar_metadata() -> dict[str, dict]:
+    metadata_path = BUILTIN_AVATAR_UPLOAD_DIR / "metadata.json"
+    if not metadata_path.exists():
+        return {}
+
+    try:
+        data = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    return {
+        str(key): value
+        for key, value in data.items()
+        if isinstance(value, dict)
+    }
+
+
 def get_all_builtin_avatar_keys() -> list[str]:
-    """返回所有可用内置头像 key（硬编码 + 上传目录中的）。"""
-    uploaded = _scan_builtin_avatar_files()
-    merged = list(BUILTIN_AVATAR_KEYS)
-    for f in uploaded:
-        if f not in merged:
-            merged.append(f)
-    return merged
+    """返回当前磁盘上实际可用的内置头像 key。"""
+    return _scan_builtin_avatar_files()
 
 
 def refresh_valid_builtin_keys():
@@ -246,7 +313,12 @@ def is_hardcoded_builtin_avatar(filename: str) -> bool:
     return filename in BUILTIN_AVATAR_KEYS
 
 
-async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avatars_name: str | None = None) -> str:
+async def save_builtin_avatar(
+    file: UploadFile,
+    variety: str | None = None,
+    avatars_name: str | None = None,
+    source_mtime: float | None = None
+) -> str:
     suffix = ALLOWED_MIME_TYPES.get(file.content_type or "")
     if not suffix:
         raw_suffix = Path(file.filename or "").suffix.lower()
@@ -285,17 +357,14 @@ async def save_builtin_avatar(file: UploadFile, variety: str | None = None, avat
             except Exception:
                 pass
         metadata[filename] = {"variety": variety, "avatars_name": avatars_name}
+        if source_mtime is not None:
+            metadata[filename]["source_mtime"] = source_mtime
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     refresh_valid_builtin_keys()
     return f"{BUILTIN_AVATAR_URL_PREFIX}/{filename}"
 
 
 def delete_builtin_avatar_file(filename: str):
-    if is_hardcoded_builtin_avatar(filename):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="无法删除内置的默认头像，仅可删除自行上传的头像",
-        )
     file_path = (BUILTIN_AVATAR_UPLOAD_DIR / filename).resolve()
     try:
         file_path.relative_to(BUILTIN_AVATAR_UPLOAD_DIR.resolve())
@@ -306,7 +375,16 @@ def delete_builtin_avatar_file(filename: str):
         )
     if file_path.exists():
         file_path.unlink()
-            
+
+    metadata = load_builtin_avatar_metadata()
+    if filename in metadata:
+        del metadata[filename]
+        metadata_path = BUILTIN_AVATAR_UPLOAD_DIR / "metadata.json"
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     refresh_valid_builtin_keys()
 
 
