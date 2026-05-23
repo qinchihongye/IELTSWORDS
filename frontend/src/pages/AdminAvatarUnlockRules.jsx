@@ -285,8 +285,6 @@ const AdminAvatarUnlockRules = () => {
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前还没有配置章节头像规则" />
                   ) : fields.map((field) => {
                     const currentRule = watchedRules[field.name] || {};
-                    const avatarItem = avatarByKey.get(currentRule.avatar_key);
-                    const chapterItem = chapterByNo.get(String(currentRule.chapter_no || ''));
                     return (
                       <div className="rule-row" key={field.key}>
                         <div className="rule-row-grid">
@@ -364,32 +362,6 @@ const AdminAvatarUnlockRules = () => {
                             <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)}>
                               删除
                             </Button>
-                          </div>
-                        </div>
-
-                        <div className="rule-preview">
-                          <div className="rule-preview-avatar">
-                            {avatarItem?.url ? (
-                              <img src={`${apiBase}${avatarItem.url}`} alt={avatarItem.label} className="rule-avatar-img" />
-                            ) : (
-                              <div className="rule-avatar-fallback">{avatarItem?.label?.slice(0, 1) || '?'}</div>
-                            )}
-                          </div>
-                          <div className="rule-preview-copy">
-                            <Space wrap size={[8, 8]}>
-                              <Text strong>{avatarItem?.label || '未选择头像'}</Text>
-                              {avatarItem?.variety ? <Tag>{avatarItem.variety}</Tag> : null}
-                              {avatarItem?.vip_only ? <Tag color="gold">VIP 头像</Tag> : null}
-                              <Tag color="blue">章节解锁</Tag>
-                              {currentRule.min_role ? (
-                                <Tag color={ROLE_COLORS[currentRule.min_role] || 'default'}>
-                                  {ROLE_LIMIT_TAG_LABELS[currentRule.min_role] || ROLE_LABELS[currentRule.min_role] || currentRule.min_role}
-                                </Tag>
-                              ) : null}
-                            </Space>
-                            <Text type="secondary">
-                              {chapterItem ? `目标章节：第 ${chapterItem.chapterNo} 章 · ${chapterItem.chapterName}` : '请先选择章节'}
-                            </Text>
                           </div>
                         </div>
                       </div>
@@ -558,11 +530,14 @@ const css = `
 .rule-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
+  max-height: 760px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .rule-row {
-  padding: 16px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1px solid rgba(226, 232, 240, 0.92);
   background: rgba(255, 255, 255, 0.92);
@@ -572,31 +547,17 @@ const css = `
   display: grid;
   grid-template-columns: minmax(160px, 0.8fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(180px, 0.8fr) auto;
   gap: 12px;
-  align-items: start;
+  align-items: end;
 }
 
 .rule-row-grid .ant-form-item {
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .rule-row-action {
   display: flex;
   align-items: end;
-  padding-bottom: 12px;
-}
-
-.rule-preview {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  border-top: 1px dashed rgba(226, 232, 240, 0.92);
-  padding-top: 14px;
-}
-
-.rule-preview-copy {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
+  min-height: 32px;
 }
 
 .rule-preview-avatar,

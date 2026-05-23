@@ -1,7 +1,7 @@
 {
   "rules": [
     {
-      "avatarKey": "白色恋人.png",
+      "avatarKey": "幻想曲.png",
       "unlockType": "chapter_completion",
       "chapterNo": "1"
     },
@@ -26,7 +26,7 @@
       "chapterNo": "5"
     },
     {
-      "avatarKey": "幻想曲.png",
+      "avatarKey": "白色恋人.png",
       "unlockType": "chapter_completion",
       "chapterNo": "6"
     },
