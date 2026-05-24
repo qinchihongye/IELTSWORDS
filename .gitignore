@@ -76,3 +76,4 @@ data/uploads/
 # Tools & runtime
 .run/
 .codebuddy/
+.env_production
