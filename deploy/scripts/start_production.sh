@@ -174,6 +174,12 @@ server {
         try_files \$uri =404;
     }
 
+    location ~* \.(?:png|jpg|jpeg|webp|gif|ico|svg|woff2?|ttf)$ {
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        try_files \$uri =404;
+    }
+
     location /api/ai/chat/stream {
         proxy_pass http://127.0.0.1:${SERVER_PORT}/api/ai/chat/stream;
         proxy_http_version 1.1;

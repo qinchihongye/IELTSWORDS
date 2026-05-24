@@ -19,25 +19,83 @@ function NavigateSetter() {
 }
 
 // 页面组件按需懒加载 (Lazy Load)
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
-const Home = lazy(() => import('./pages/Home'));
-const SequentialSelect = lazy(() => import('./pages/SequentialSelect'));
-const Learning = lazy(() => import('./pages/Learning'));
-const Review = lazy(() => import('./pages/Review'));
-const MistakeBook = lazy(() => import('./pages/MistakeBook'));
-const Quiz = lazy(() => import('./pages/Quiz'));
-const CheckIn = lazy(() => import('./pages/CheckIn'));
-const LearningCalendar = lazy(() => import('./pages/LearningCalendar'));
-const Profile = lazy(() => import('./pages/Profile'));
-const CustomBooks = lazy(() => import('./pages/CustomBooks'));
-const CustomBookLearning = lazy(() => import('./pages/CustomBookLearning'));
-const AdminUsers = lazy(() => import('./pages/AdminUsers'));
-const AdminContent = lazy(() => import('./pages/AdminContent'));
-const SuperAdmin = lazy(() => import('./pages/SuperAdmin'));
-const AdminBuiltinAvatars = lazy(() => import('./pages/AdminBuiltinAvatars'));
-const AdminAvatarUnlockRules = lazy(() => import('./pages/AdminAvatarUnlockRules'));
-const NotFound = lazy(() => import('./pages/NotFound'));
+const lazyWithPreload = (loader) => {
+  const Component = lazy(loader);
+  Component.preload = loader;
+  return Component;
+};
+
+const Login = lazyWithPreload(() => import('./pages/Login'));
+const Register = lazyWithPreload(() => import('./pages/Register'));
+const Home = lazyWithPreload(() => import('./pages/Home'));
+const SequentialSelect = lazyWithPreload(() => import('./pages/SequentialSelect'));
+const Learning = lazyWithPreload(() => import('./pages/Learning'));
+const Review = lazyWithPreload(() => import('./pages/Review'));
+const MistakeBook = lazyWithPreload(() => import('./pages/MistakeBook'));
+const Quiz = lazyWithPreload(() => import('./pages/Quiz'));
+const CheckIn = lazyWithPreload(() => import('./pages/CheckIn'));
+const LearningCalendar = lazyWithPreload(() => import('./pages/LearningCalendar'));
+const Profile = lazyWithPreload(() => import('./pages/Profile'));
+const CustomBooks = lazyWithPreload(() => import('./pages/CustomBooks'));
+const CustomBookLearning = lazyWithPreload(() => import('./pages/CustomBookLearning'));
+const AdminUsers = lazyWithPreload(() => import('./pages/AdminUsers'));
+const AdminContent = lazyWithPreload(() => import('./pages/AdminContent'));
+const SuperAdmin = lazyWithPreload(() => import('./pages/SuperAdmin'));
+const AdminBuiltinAvatars = lazyWithPreload(() => import('./pages/AdminBuiltinAvatars'));
+const AdminAvatarUnlockRules = lazyWithPreload(() => import('./pages/AdminAvatarUnlockRules'));
+const NotFound = lazyWithPreload(() => import('./pages/NotFound'));
+
+const COMMON_ROUTE_PRELOADERS = [
+  Home.preload,
+  SequentialSelect.preload,
+  Learning.preload,
+  Review.preload,
+  MistakeBook.preload,
+  CheckIn.preload,
+  Profile.preload,
+];
+
+const preloadCommonRoutes = () => {
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (connection?.saveData) {
+    return () => {};
+  }
+
+  let cancelled = false;
+  let timeoutId = null;
+  let idleId = null;
+
+  const run = async () => {
+    for (const preload of COMMON_ROUTE_PRELOADERS) {
+      if (cancelled) {
+        return;
+      }
+      try {
+        await preload();
+      } catch {
+        // Route preloading is best-effort.
+      }
+      await new Promise((resolve) => {
+        timeoutId = window.setTimeout(resolve, 1200);
+      });
+    }
+  };
+
+  const start = () => {
+    if ('requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(() => { void run(); }, { timeout: 6000 });
+    } else {
+      timeoutId = window.setTimeout(() => { void run(); }, 3500);
+    }
+  };
+
+  start();
+  return () => {
+    cancelled = true;
+    if (idleId) window.cancelIdleCallback(idleId);
+    if (timeoutId) window.clearTimeout(timeoutId);
+  };
+};
 
 // 路由级全局加载骨架
 const PageLoading = () => (
@@ -47,6 +105,8 @@ const PageLoading = () => (
 );
 
 function App() {
+  useEffect(() => preloadCommonRoutes(), []);
+
   return (
     <ConfigProvider
       locale={zhCN}

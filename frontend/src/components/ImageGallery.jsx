@@ -11,11 +11,32 @@ import { useLearning } from '../context/LearningContext';
 
 const { Text } = Typography;
 const IMAGE_OBJECT_URL_CACHE_LIMIT = 80;
+const IMAGE_PERSISTENT_CACHE_LIMIT = 180;
 const imageObjectUrlCache = new Map();
 
 const getImageCacheKey = (imageUrl) => {
   const token = localStorage.getItem('access_token') || '';
   return `${token}:${imageUrl}`;
+};
+
+const getPersistentCacheName = () => {
+  let userKey = '';
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    userKey = user?.id || user?.uid || user?.username || '';
+  } catch {
+    userKey = '';
+  }
+
+  if (!userKey) {
+    userKey = (localStorage.getItem('access_token') || 'anonymous').slice(-16);
+  }
+  return `ieltswords-image-cache-v1-${userKey}`;
+};
+
+const getAbsoluteImageUrl = (imageUrl) => {
+  const baseUrl = apiClient.defaults.baseURL || window.location.origin;
+  return new URL(imageUrl, baseUrl).href;
 };
 
 const getCachedObjectUrl = (imageUrl) => {
@@ -45,6 +66,168 @@ const cacheObjectUrl = (imageUrl, objectUrl) => {
     imageObjectUrlCache.delete(oldestKey);
     URL.revokeObjectURL(oldestObjectUrl);
   }
+};
+
+const openImageDatabase = () => new Promise((resolve) => {
+  if (!('indexedDB' in window)) {
+    resolve(null);
+    return;
+  }
+
+  const request = indexedDB.open('ieltswords-image-cache-v1', 1);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    if (!db.objectStoreNames.contains('images')) {
+      db.createObjectStore('images');
+    }
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => resolve(null);
+});
+
+const getIndexedDbImageKey = (absoluteUrl) => `${getPersistentCacheName()}:${absoluteUrl}`;
+
+const readIndexedImageBlob = async (absoluteUrl) => {
+  const db = await openImageDatabase();
+  if (!db) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction('images', 'readonly');
+    const request = transaction.objectStore('images').get(getIndexedDbImageKey(absoluteUrl));
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => resolve(null);
+  });
+};
+
+const writeIndexedImageBlob = async (absoluteUrl, blob) => {
+  const db = await openImageDatabase();
+  if (!db) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const transaction = db.transaction('images', 'readwrite');
+    transaction.objectStore('images').put(blob, getIndexedDbImageKey(absoluteUrl));
+    transaction.oncomplete = resolve;
+    transaction.onerror = resolve;
+  });
+};
+
+const deleteIndexedImageBlob = async (absoluteUrl) => {
+  const db = await openImageDatabase();
+  if (!db) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const transaction = db.transaction('images', 'readwrite');
+    transaction.objectStore('images').delete(getIndexedDbImageKey(absoluteUrl));
+    transaction.oncomplete = resolve;
+    transaction.onerror = resolve;
+  });
+};
+
+const readPersistentImageBlob = async (imageUrl) => {
+  const absoluteUrl = getAbsoluteImageUrl(imageUrl);
+  if (!('caches' in window)) {
+    return readIndexedImageBlob(absoluteUrl);
+  }
+
+  try {
+    const cache = await caches.open(getPersistentCacheName());
+    const cachedResponse = await cache.match(absoluteUrl);
+    if (!cachedResponse) {
+      return readIndexedImageBlob(absoluteUrl);
+    }
+    return cachedResponse.blob();
+  } catch {
+    return readIndexedImageBlob(absoluteUrl);
+  }
+};
+
+const readPersistentCacheIndex = () => {
+  try {
+    return JSON.parse(localStorage.getItem('ieltswords_image_cache_index') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const writePersistentCacheIndex = (items) => {
+  try {
+    localStorage.setItem('ieltswords_image_cache_index', JSON.stringify(items));
+  } catch {
+    // Ignore quota issues; Cache Storage remains best-effort.
+  }
+};
+
+const deletePersistentCacheItem = async (item) => {
+  if ('caches' in window) {
+    try {
+      const cache = await caches.open(item.cacheName);
+      await cache.delete(item.url);
+    } catch {
+      // Cache Storage eviction is best-effort.
+    }
+  }
+  await deleteIndexedImageBlob(item.url);
+};
+
+const rememberPersistentCacheItem = async (absoluteUrl) => {
+  const cacheName = getPersistentCacheName();
+  const cacheKey = `${cacheName}:${absoluteUrl}`;
+  const nextItems = readPersistentCacheIndex().filter((item) => item.key !== cacheKey);
+  nextItems.push({ key: cacheKey, cacheName, url: absoluteUrl, savedAt: Date.now() });
+
+  while (nextItems.length > IMAGE_PERSISTENT_CACHE_LIMIT) {
+    const oldest = nextItems.shift();
+    if (oldest) {
+      await deletePersistentCacheItem(oldest);
+    }
+  }
+
+  writePersistentCacheIndex(nextItems);
+};
+
+const writePersistentImageBlob = async (imageUrl, blob) => {
+  if (!blob) {
+    return;
+  }
+
+  try {
+    const absoluteUrl = getAbsoluteImageUrl(imageUrl);
+    if ('caches' in window) {
+      const cache = await caches.open(getPersistentCacheName());
+      await cache.put(
+        absoluteUrl,
+        new Response(blob, {
+          headers: {
+            'Content-Type': blob.type || 'application/octet-stream',
+            'Cache-Control': 'private, max-age=604800',
+          },
+        })
+      );
+    }
+    await writeIndexedImageBlob(absoluteUrl, blob);
+    await rememberPersistentCacheItem(absoluteUrl);
+  } catch {
+    // Persistent image caching is best-effort.
+  }
+};
+
+const loadImageBlob = async (imageUrl) => {
+  const cachedBlob = await readPersistentImageBlob(imageUrl);
+  if (cachedBlob) {
+    return cachedBlob;
+  }
+
+  const response = await apiClient.get(imageUrl, {
+    responseType: 'blob',
+  });
+  void writePersistentImageBlob(imageUrl, response.data);
+  return response.data;
 };
 
 const ImageGallery = ({ images = [], emptyMode }) => {
@@ -108,6 +291,8 @@ const ImageGallery = ({ images = [], emptyMode }) => {
   }, [lensRadius, isHovered, maskRadius]);
 
   const hasImages = images.length > 0;
+  const selectedImage = images[currentIndex];
+  const selectedObjectUrl = selectedImage ? imageUrls[selectedImage.imageUrl] : '';
 
   useEffect(() => {
     setCurrentIndex(0);
@@ -144,10 +329,8 @@ const ImageGallery = ({ images = [], emptyMode }) => {
       setLoading(true);
 
       try {
-        const response = await apiClient.get(selectedUrl, {
-          responseType: 'blob',
-        });
-        const objectUrl = URL.createObjectURL(response.data);
+        const imageBlob = await loadImageBlob(selectedUrl);
+        const objectUrl = URL.createObjectURL(imageBlob);
         cacheObjectUrl(selectedUrl, objectUrl);
         if (active) {
           setImageUrls((currentUrls) => ({
@@ -176,6 +359,56 @@ const ImageGallery = ({ images = [], emptyMode }) => {
       active = false;
     };
   }, [currentIndex, hasImages, imageUrls, images]);
+
+  useEffect(() => {
+    if (!hasImages || !selectedImage || !selectedObjectUrl || images.length < 2) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const nextImage = images[(currentIndex + 1) % images.length];
+    const nextUrl = nextImage?.imageUrl;
+
+    if (!nextUrl || getCachedObjectUrl(nextUrl)) {
+      return undefined;
+    }
+
+    const preload = async () => {
+      if (cancelled) {
+        return;
+      }
+      const persistentBlob = await readPersistentImageBlob(nextUrl);
+      if (cancelled || persistentBlob) {
+        return;
+      }
+      try {
+        const response = await apiClient.get(nextUrl, {
+          responseType: 'blob',
+          skipErrorHandler: true,
+        });
+        if (!cancelled) {
+          await writePersistentImageBlob(nextUrl, response.data);
+        }
+      } catch {
+        // Prefetch failures should not affect the visible image.
+      }
+    };
+
+    const schedulePreload = () => {
+      if ('requestIdleCallback' in window) {
+        const idleId = window.requestIdleCallback(preload, { timeout: 4000 });
+        return () => window.cancelIdleCallback(idleId);
+      }
+      const timeoutId = window.setTimeout(preload, 1800);
+      return () => window.clearTimeout(timeoutId);
+    };
+
+    const cancelScheduledPreload = schedulePreload();
+    return () => {
+      cancelled = true;
+      cancelScheduledPreload();
+    };
+  }, [currentIndex, hasImages, images, selectedImage, selectedObjectUrl]);
 
   if (!hasImages) {
     return (
@@ -226,9 +459,6 @@ const ImageGallery = ({ images = [], emptyMode }) => {
     e.stopPropagation();
     setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
   };
-
-  const selectedImage = images[currentIndex];
-  const selectedObjectUrl = selectedImage ? imageUrls[selectedImage.imageUrl] : '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>

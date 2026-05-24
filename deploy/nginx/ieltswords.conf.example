@@ -24,6 +24,12 @@ server {
         try_files $uri =404;
     }
 
+    location ~* \.(?:png|jpg|jpeg|webp|gif|ico|svg|woff2?|ttf)$ {
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        try_files $uri =404;
+    }
+
     # AI streaming endpoint — disable buffering for real-time token delivery
     location /api/ai/chat/stream {
         proxy_pass http://127.0.0.1:8889/api/ai/chat/stream;

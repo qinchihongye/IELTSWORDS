@@ -20,6 +20,10 @@ import { formatChapterTitle } from '../utils/learning';
 
 const { Title, Text } = Typography;
 
+const getGroupContentKey = (group) => (
+  group ? `${group.chapterNo}:${group.groupId}` : null
+);
+
 const Learning = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,10 +34,12 @@ const Learning = () => {
     setCurrentGroup,
     words,
     setWords,
+    currentWordsKey,
     currentIndex,
     setCurrentIndex,
     images,
     setImages,
+    currentImagesKey,
     fetchWordsByGroup,
     fetchImagesByGroup,
     fetchRandomGroups,
@@ -54,7 +60,14 @@ const Learning = () => {
       ? 'random-word'
       : null;
   const activeMode = routeMode || mode;
-  const [loading, setLoading] = useState(activeMode !== 'mistake-book');
+  const currentGroupContentKey = getGroupContentKey(currentGroup);
+  const hasLoadedSequentialContent =
+    activeMode === 'sequential' &&
+    currentGroupContentKey &&
+    currentWordsKey === currentGroupContentKey &&
+    currentImagesKey === currentGroupContentKey &&
+    words.length > 0;
+  const [loading, setLoading] = useState(() => activeMode !== 'mistake-book' && !hasLoadedSequentialContent);
   const [randomWord, setRandomWord] = useState(null);
   const [currentStatus, setCurrentStatus] = useState('unlearned');
   const [isMistakeMarked, setIsMistakeMarked] = useState(false);
@@ -72,14 +85,11 @@ const Learning = () => {
     : '';
 
   const loadSequentialContent = useCallback(async (group) => {
+    const groupContentKey = getGroupContentKey(group);
     const wordsAlreadyLoaded =
-      words.length > 0 &&
-      words[0].groupId === group.groupId &&
-      words[0].chapterNo === group.chapterNo;
-    const imagesAlreadyLoaded =
-      images.length > 0 &&
-      images[0].groupId === group.groupId &&
-      images[0].chapterNo === group.chapterNo;
+      currentWordsKey === groupContentKey &&
+      words.length > 0;
+    const imagesAlreadyLoaded = currentImagesKey === groupContentKey;
 
     if (!wordsAlreadyLoaded) {
       await fetchWordsByGroup(group.chapterNo, group.groupId);
@@ -90,7 +100,7 @@ const Learning = () => {
     }
 
     setLoading(false);
-  }, [fetchImagesByGroup, fetchWordsByGroup, images, words]);
+  }, [currentImagesKey, currentWordsKey, fetchImagesByGroup, fetchWordsByGroup, words.length]);
 
   const loadRandomWordContent = useCallback(async () => {
     const word = await fetchRandomWord();
