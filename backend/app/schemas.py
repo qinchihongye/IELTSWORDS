@@ -88,11 +88,14 @@ class BuiltinAvatarOption(BaseModel):
     url: str
     is_hardcoded: bool = False
     unlock_source: Optional[str] = None
+    is_locked: bool = False
 
 
 class CurrentUserAvatarCatalog(BaseModel):
     avatars: List[BuiltinAvatarOption]
     next_unlock_condition: Optional[str] = None
+    unlocked_normal_count: Optional[int] = None
+    total_normal_count: Optional[int] = None
 
 class UserRoleUpdate(BaseModel):
     role: UserRole

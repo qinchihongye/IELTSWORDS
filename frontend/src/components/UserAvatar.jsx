@@ -1,27 +1,27 @@
 import React, { useState } from 'react';
 import { Avatar, Modal } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { getAvatarFallbackText, getAvatarSrc, getAvatarName } from '../utils/avatars';
 
-const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, src: customSrc, ...props }) => {
+const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, src: customSrc, locked = false, ...props }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const src = customSrc || getAvatarSrc(user);
+  const src = locked ? null : (customSrc || getAvatarSrc(user));
   const title = previewTitle || user?.username || user?.email || '头像预览';
 
   const avatarNode = (
     <Avatar
       size={size}
       src={src}
-      icon={!src ? <UserOutlined /> : undefined}
+      icon={locked ? <LockOutlined /> : (!src ? <UserOutlined /> : undefined)}
       style={{
-        background: 'rgba(99, 102, 241, 0.12)',
-        color: '#4f46e5',
+        background: locked ? '#f1f5f9' : 'rgba(99, 102, 241, 0.12)',
+        color: locked ? '#94a3b8' : '#4f46e5',
         flexShrink: 0,
         ...style,
       }}
       {...props}
     >
-      {!src ? getAvatarFallbackText(user?.username || user?.email || '') : null}
+      {!src && !locked ? getAvatarFallbackText(user?.username || user?.email || '') : null}
     </Avatar>
   );
 
@@ -70,8 +70,10 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
             size={200}
             src={src}
             shape="circle"
+            icon={locked ? <LockOutlined /> : (!src ? <UserOutlined /> : undefined)}
             style={{
-              background: style?.background || undefined,
+              background: locked ? '#f1f5f9' : (style?.background || undefined),
+              color: locked ? '#94a3b8' : '#4f46e5',
               boxShadow: style?.background === 'transparent' ? 'none' : '0 8px 30px rgba(0,0,0,0.12)',
             }}
           />

@@ -16,6 +16,7 @@ from . import models
 from .avatar_storage import (
     BUILTIN_AVATAR_URL_PREFIX,
     VIP_ONLY_BUILTIN_AVATAR_KEYS,
+    PUBLIC_DEFAULT_BUILTIN_AVATAR_KEYS,
     get_all_builtin_avatar_keys,
     is_hardcoded_builtin_avatar,
     load_builtin_avatar_metadata,
@@ -108,10 +109,11 @@ def get_all_active_unlock_rules(db: Session = None) -> list[AvatarUnlockRule]:
     all_keys = get_all_builtin_avatar_keys()
     static_locked_keys = {r.avatar_key for r in rules}
     vip_locked_keys = set(VIP_ONLY_BUILTIN_AVATAR_KEYS)
+    public_default_keys = set(PUBLIC_DEFAULT_BUILTIN_AVATAR_KEYS)
     
-    locked_keys = static_locked_keys.union(vip_locked_keys)
+    locked_keys = static_locked_keys.union(vip_locked_keys).union(public_default_keys)
     
-    # Dynamic pool (avatars that are not VIP and not in JSON)
+    # Dynamic pool (avatars that are not VIP, not public defaults, and not in JSON)
     dynamic_keys = [k for k in all_keys if k not in locked_keys]
     if dynamic_keys:
         dynamic_keys.sort() # Predictable sort
@@ -290,7 +292,17 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
         user_stats = get_user_unlock_stats(db, user.id)
 
     visible_avatars = []
+    unlocked_normal_count = 0
+    total_normal_count = 0
+    is_vip_or_above = has_min_role(user, "premium_user")
+
     for avatar_key in avatar_keys:
+        # Determine if it's a normal/stage-unlocked avatar
+        is_vip = avatar_key in VIP_ONLY_BUILTIN_AVATAR_KEYS
+        rule = rule_map.get(avatar_key)
+        is_chapter = rule and rule.unlock_type == CHAPTER_COMPLETION_UNLOCK
+        is_normal = not is_vip and not is_chapter
+
         access_source = get_builtin_avatar_access_source(
             db,
             user,
@@ -299,18 +311,29 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
             user_stats=user_stats,
             rule_map=rule_map,
         )
-        if not access_source:
+
+        if is_normal:
+            total_normal_count += 1
+            if access_source:
+                unlocked_normal_count += 1
+
+        # VIP and above users see all avatars (even if locked)
+        should_show = bool(access_source) or is_vip_or_above
+
+        if not should_show:
             continue
 
+        is_locked = not bool(access_source)
         item = metadata.get(avatar_key) or {}
         visible_avatars.append({
             "key": avatar_key,
             "label": _avatar_label(avatar_key, metadata),
             "variety": str(item.get("variety") or "").strip() or "未分类",
-            "vip_only": avatar_key in VIP_ONLY_BUILTIN_AVATAR_KEYS,
+            "vip_only": is_vip,
             "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{avatar_key}",
             "is_hardcoded": is_hardcoded_builtin_avatar(avatar_key),
-            "unlock_source": access_source,
+            "unlock_source": "chapter_completion" if is_chapter else ("vip" if is_vip else "words_mastered"),
+            "is_locked": is_locked,
         })
 
     def avatar_sort_key(item: dict) -> tuple:
@@ -341,4 +364,6 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
     return {
         "avatars": visible_avatars,
         "next_unlock_condition": next_unlock_condition,
+        "unlocked_normal_count": unlocked_normal_count,
+        "total_normal_count": total_normal_count,
     }

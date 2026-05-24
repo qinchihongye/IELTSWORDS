@@ -33,6 +33,10 @@ if BUILTIN_AVATAR_UPLOAD_DIR.exists():
 VIP_ONLY_BUILTIN_AVATAR_KEYS = {
     "花舞霓裳.png",
 }
+PUBLIC_DEFAULT_BUILTIN_AVATAR_KEYS = {
+    "石灰灯.png",
+    "香草草莓.png",
+}
 LEGACY_BUILTIN_AVATAR_KEYS = [
     "三河千鸟.png",
     "恋物语.png",
