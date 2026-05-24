@@ -100,12 +100,45 @@ const WEB_SEARCH_FRESHNESS_KEY = 'ieltswords_ai_web_search_freshness';
 const getChatHistoryBundleKey = (userId) => `ieltswords_ai_chat_history_bundle_${userId || 'guest'}`;
 const getLegacyChatHistoryKey = (userId) => `ieltswords_ai_chat_history_${userId || 'guest'}`;
 
-const getLocalAISettings = () => {
+export const getLocalAISettings = () => {
   try {
     const data = localStorage.getItem(LOCAL_SETTINGS_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) {
+      return { configs: [], activeConfigId: null };
+    }
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      return { configs: parsed, activeConfigId: parsed[0]?.id || null };
+    }
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.configs && Array.isArray(parsed.configs)) {
+        return parsed;
+      }
+      // Migrate old format
+      if (parsed.model || parsed.apiKey || parsed.provider || parsed.baseUrl) {
+        const singleConfig = {
+          id: 'config_default',
+          provider: parsed.provider || 'custom',
+          baseUrl: parsed.baseUrl || '',
+          model: parsed.model || '',
+          modelDisplayName: parsed.modelDisplayName || '',
+          apiKey: parsed.apiKey || '',
+        };
+        const migrated = {
+          configs: [singleConfig],
+          activeConfigId: 'config_default',
+        };
+        try {
+          localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(migrated));
+        } catch (e) {
+          console.error('Failed to save migrated settings:', e);
+        }
+        return migrated;
+      }
+    }
+    return { configs: [], activeConfigId: null };
   } catch {
-    return null;
+    return { configs: [], activeConfigId: null };
   }
 };
 
@@ -364,13 +397,16 @@ const upsertChatSession = (sessions, sessionId, { messages, context }) => {
   }
 
   const current = nextSessions[sessionIndex];
+  const isMessagesChanged = !current.messages || current.messages.length !== messages.length || 
+    JSON.stringify(current.messages[current.messages.length - 1]) !== JSON.stringify(messages[messages.length - 1]);
+
   nextSessions[sessionIndex] = {
     ...current,
     context: normalizeContext(context || current.context),
     messages,
     title: current.titleEdited ? current.title : buildConversationTitle(messages),
     preview: buildConversationPreview(messages),
-    updatedAt: now,
+    updatedAt: isMessagesChanged ? now : current.updatedAt,
   };
 
   return nextSessions;
@@ -389,7 +425,7 @@ const normalizeModelList = (models) => {
 };
 
 const normalizeAISettings = (data, previousSelectedModel = '') => {
-  const localSettings = getLocalAISettings() || {};
+  const localSettings = getLocalAISettings() || { configs: [], activeConfigId: null };
   const availableModels = normalizeModelList(data?.available_models);
   const systemThinkingEnabled = typeof data?.thinking_enabled === 'boolean'
     ? data.thinking_enabled
@@ -398,33 +434,57 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
   const storedWebSearchEnabled = getLocalWebSearchEnabled();
   const storedWebSearchFreshness = getLocalWebSearchFreshness();
   
-  const customModel = localSettings.model || '';
-  const hasApiKey = Boolean(localSettings.apiKey);
   const systemModel = data?.active_model || '';
   const systemModelDisplayName = data?.active_model_display_name || '';
-  const activeModel = customModel || availableModels[0] || '';
-  const defaultModel = availableModels[0] || activeModel;
+
+  const customConfigs = (localSettings.configs || []).map(cfg => ({
+    id: cfg.id,
+    provider: cfg.provider || 'custom',
+    baseUrl: cfg.baseUrl || '',
+    model: cfg.model || '',
+    modelDisplayName: cfg.modelDisplayName || '',
+    hasApiKey: Boolean(cfg.apiKey),
+    maskedApiKey: cfg.apiKey ? '*'.repeat(8) : '',
+  }));
+
+  const systemDefault = availableModels[0] || '';
+  const customDefault = customConfigs.find(cfg => cfg.id === localSettings.activeConfigId) || customConfigs[0] || null;
   
-  const selectedModel = (
-    previousSelectedModel && (availableModels.includes(previousSelectedModel) || previousSelectedModel === customModel)
-      ? previousSelectedModel
-      : defaultModel
+  let selectedModel = '';
+  
+  const isPrevValid = previousSelectedModel && (
+    availableModels.includes(previousSelectedModel) ||
+    customConfigs.some(cfg => cfg.id === previousSelectedModel)
   );
+  
+  if (isPrevValid) {
+    selectedModel = previousSelectedModel;
+  } else if (customDefault) {
+    selectedModel = customDefault.id;
+  } else {
+    selectedModel = systemDefault;
+  }
+
+  const activeConfig = customConfigs.find(cfg => cfg.id === selectedModel);
+  const activeModelName = activeConfig ? activeConfig.model : selectedModel;
+  const activeModelDisplayName = activeConfig 
+    ? (activeConfig.modelDisplayName || activeConfig.model)
+    : (systemModelDisplayName || selectedModel);
 
   return {
-    customBaseUrl: localSettings.baseUrl || '',
-    customModel,
-    customModelDisplayName: localSettings.modelDisplayName || '',
-    hasApiKey,
-    maskedApiKey: localSettings.apiKey ? '*'.repeat(8) : '',
-    usesCustomConfig: hasApiKey,
+    customConfigs,
+    activeConfigId: localSettings.activeConfigId,
+    customProvider: activeConfig ? activeConfig.provider : 'custom',
+    customBaseUrl: activeConfig ? activeConfig.baseUrl : '',
+    customModel: activeConfig ? activeConfig.model : '',
+    customModelDisplayName: activeConfig ? activeConfig.modelDisplayName : '',
+    hasApiKey: customConfigs.some(cfg => cfg.hasApiKey),
+    usesCustomConfig: Boolean(activeConfig),
     systemConfigured: Boolean(data?.system_configured),
-    canUseAI: hasApiKey || Boolean(data?.system_configured),
-    activeSource: hasApiKey ? 'custom' : 'system',
-    activeModel,
-    activeModelDisplayName: hasApiKey
-      ? (localSettings.modelDisplayName || activeModel)
-      : (systemModelDisplayName || activeModel),
+    canUseAI: customConfigs.some(cfg => cfg.hasApiKey) || Boolean(data?.system_configured),
+    activeSource: activeConfig ? 'custom' : 'system',
+    activeModel: activeModelName,
+    activeModelDisplayName,
     availableModels,
     selectedModel,
     systemModel,
@@ -568,6 +628,56 @@ export const AIChatProvider = ({ children }) => {
   const loadedUserKeyRef = useRef(userKey || null);
   const chatSessions = chatHistory.sessions;
   const activeChatSessionId = chatHistory.activeSessionId || null;
+
+  const selectModel = useCallback((model) => {
+    const normalizedModel = typeof model === 'string' ? model.trim() : '';
+    setAISettings((prev) => {
+      if (!normalizedModel || normalizedModel === prev.selectedModel) {
+        return prev;
+      }
+
+      const isValidSystemModel = (prev.availableModels || []).includes(normalizedModel);
+      const isValidCustomConfig = (prev.customConfigs || []).some(cfg => cfg.id === normalizedModel);
+
+      if (!isValidSystemModel && !isValidCustomConfig) {
+        return prev;
+      }
+
+      if (isValidCustomConfig) {
+        try {
+          const localSettings = getLocalAISettings() || { configs: [], activeConfigId: null };
+          localSettings.activeConfigId = normalizedModel;
+          localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(localSettings));
+        } catch (e) {
+          console.error('Failed to update activeConfigId in localStorage:', e);
+        }
+      }
+
+      const next = {
+        ...prev,
+        selectedModel: normalizedModel,
+      };
+
+      const activeConfig = (prev.customConfigs || []).find(cfg => cfg.id === normalizedModel);
+      const nextNormalized = {
+        ...next,
+        activeConfigId: activeConfig ? activeConfig.id : prev.activeConfigId,
+        customProvider: activeConfig ? activeConfig.provider : 'custom',
+        customBaseUrl: activeConfig ? activeConfig.baseUrl : '',
+        customModel: activeConfig ? activeConfig.model : '',
+        customModelDisplayName: activeConfig ? activeConfig.modelDisplayName : '',
+        usesCustomConfig: Boolean(activeConfig),
+        activeSource: activeConfig ? 'custom' : 'system',
+        activeModel: activeConfig ? activeConfig.model : normalizedModel,
+        activeModelDisplayName: activeConfig
+          ? (activeConfig.modelDisplayName || activeConfig.model)
+          : (prev.systemModelDisplayName || normalizedModel),
+      };
+
+      aiSettingsRef.current = nextNormalized;
+      return nextNormalized;
+    });
+  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -862,7 +972,7 @@ export const AIChatProvider = ({ children }) => {
   }, [fetchAISettings]);
   const closeDrawer = useCallback(() => setIsOpen(false), []);
 
-  const saveAISettings = useCallback(async (settings) => {
+  const saveAISettings = useCallback(async (settings, configId = null) => {
     if (!isAuthenticated) {
       return null;
     }
@@ -870,27 +980,109 @@ export const AIChatProvider = ({ children }) => {
     setIsSettingsSaving(true);
     try {
       const payload = {
+        provider: settings?.provider?.trim() || 'custom',
         baseUrl: settings?.baseUrl?.trim() || '',
         model: settings?.model?.trim() || '',
         modelDisplayName: settings?.modelDisplayName?.trim() || '',
         apiKey: settings?.apiKey?.trim() || '',
       };
       
-      const currentLocal = getLocalAISettings() || {};
+      const currentLocal = getLocalAISettings() || { configs: [], activeConfigId: null };
+      const configs = [...(currentLocal.configs || [])];
+      
+      let nextActiveConfigId = currentLocal.activeConfigId;
+      
+      if (configId) {
+        // Update existing config
+        const index = configs.findIndex(cfg => cfg.id === configId);
+        if (index >= 0) {
+          const oldConfig = configs[index];
+          configs[index] = {
+            ...oldConfig,
+            provider: payload.provider,
+            baseUrl: payload.baseUrl,
+            model: payload.model,
+            modelDisplayName: payload.modelDisplayName,
+            // Keep old api key if new one is empty (placeholder/no change)
+            apiKey: payload.apiKey ? payload.apiKey : oldConfig.apiKey,
+          };
+        }
+      } else {
+        // Add new config
+        const newId = `config_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        configs.push({
+          id: newId,
+          provider: payload.provider,
+          baseUrl: payload.baseUrl,
+          model: payload.model,
+          modelDisplayName: payload.modelDisplayName,
+          apiKey: payload.apiKey,
+        });
+        // Set new config as active
+        nextActiveConfigId = newId;
+      }
+      
       const newLocal = {
-        ...currentLocal,
-        baseUrl: payload.baseUrl || currentLocal.baseUrl,
-        model: payload.model || currentLocal.model,
-        modelDisplayName: payload.modelDisplayName || currentLocal.modelDisplayName,
-        apiKey: payload.apiKey || currentLocal.apiKey,
+        configs,
+        activeConfigId: nextActiveConfigId,
       };
       
       localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(newLocal));
       
-      // We don't need to patch backend anymore, but we can refetch the available models to rebuild the settings
-      return await fetchAISettings(true);
+      const nextSettings = await fetchAISettings(true);
+      // Auto select the new or updated config
+      if (!configId && nextActiveConfigId) {
+        selectModel(nextActiveConfigId);
+      }
+      return nextSettings;
     } catch (error) {
       console.error('保存 AI 设置失败:', error);
+      return null;
+    } finally {
+      setIsSettingsSaving(false);
+    }
+  }, [isAuthenticated, fetchAISettings, selectModel]);
+
+  const deleteAISettings = useCallback(async (configId) => {
+    if (!isAuthenticated || !configId) {
+      return null;
+    }
+
+    setIsSettingsSaving(true);
+    try {
+      const currentLocal = getLocalAISettings() || { configs: [], activeConfigId: null };
+      const configs = (currentLocal.configs || []).filter(cfg => cfg.id !== configId);
+      
+      let nextActiveConfigId = currentLocal.activeConfigId;
+      if (nextActiveConfigId === configId) {
+        nextActiveConfigId = configs[0]?.id || null;
+      }
+      
+      const newLocal = {
+        configs,
+        activeConfigId: nextActiveConfigId,
+      };
+      
+      localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(newLocal));
+      const nextSettings = await fetchAISettings(true);
+      
+      // Update selectedModel
+      setAISettings((prev) => {
+        let nextSelected = prev.selectedModel;
+        if (prev.selectedModel === configId) {
+          nextSelected = nextActiveConfigId || prev.availableModels[0] || '';
+        }
+        const next = {
+          ...prev,
+          selectedModel: nextSelected,
+        };
+        aiSettingsRef.current = next;
+        return next;
+      });
+      
+      return nextSettings;
+    } catch (error) {
+      console.error('删除 AI 配置失败:', error);
       return null;
     } finally {
       setIsSettingsSaving(false);
@@ -915,21 +1107,6 @@ export const AIChatProvider = ({ children }) => {
     }
   }, [isAuthenticated, fetchAISettings]);
 
-  const selectModel = useCallback((model) => {
-    const normalizedModel = typeof model === 'string' ? model.trim() : '';
-    setAISettings((prev) => {
-      if (!normalizedModel || normalizedModel === prev.selectedModel || !prev.availableModels.includes(normalizedModel)) {
-        return prev;
-      }
-
-      const next = {
-        ...prev,
-        selectedModel: normalizedModel,
-      };
-      aiSettingsRef.current = next;
-      return next;
-    });
-  }, []);
 
   const setThinkingEnabled = useCallback((enabled) => {
     const nextValue = Boolean(enabled);
@@ -977,10 +1154,15 @@ export const AIChatProvider = ({ children }) => {
 
     try {
       const payload = {};
+      const nextProvider = settings.provider?.trim() || 'custom';
       const nextBaseUrl = settings.baseUrl?.trim() || '';
       const nextModel = settings.model?.trim() || '';
       const nextModelDisplayName = settings.modelDisplayName?.trim() || '';
       const nextApiKey = settings.apiKey?.trim() || '';
+
+      if (nextProvider !== 'custom') {
+        payload.provider = nextProvider;
+      }
 
       if (nextBaseUrl) {
         payload.base_url = nextBaseUrl;
@@ -1097,7 +1279,8 @@ export const AIChatProvider = ({ children }) => {
     try {
       const currentSettings = aiSettingsRef.current;
       const selectedModel = currentSettings.selectedModel;
-      const useCustomConfig = currentSettings.customModel && selectedModel === currentSettings.customModel;
+      const matchingCustomConfig = currentSettings.customConfigs?.find(cfg => cfg.id === selectedModel);
+      const useCustomConfig = Boolean(matchingCustomConfig);
       const requestSourceMessages = shouldLimitHistoryToContext(activeContext)
         ? nextDisplayMessages.filter((message) => (
             message.sendable !== false
@@ -1109,16 +1292,17 @@ export const AIChatProvider = ({ children }) => {
         messages: requestSourceMessages
           .map(({ role, content: messageContent }) => ({ role, content: messageContent })),
         context: activeContext,
-        model: selectedModel || undefined,
+        model: useCustomConfig ? matchingCustomConfig.model : (selectedModel || undefined),
         enable_thinking: currentSettings.thinkingEnabled,
         enable_web_search: currentSettings.webSearchEnabled,
         web_search_freshness: currentSettings.webSearchEnabled
           ? normalizeWebSearchFreshness(currentSettings.webSearchFreshness)
           : undefined,
         custom_config: useCustomConfig ? {
-          base_url: currentSettings.customBaseUrl || undefined,
-          api_key: getLocalAISettings()?.apiKey || undefined,
-          model: currentSettings.customModel || undefined,
+          provider: matchingCustomConfig.provider || 'custom',
+          base_url: matchingCustomConfig.baseUrl || undefined,
+          api_key: (getLocalAISettings()?.configs || []).find(cfg => cfg.id === matchingCustomConfig.id)?.apiKey || undefined,
+          model: matchingCustomConfig.model || undefined,
         } : undefined,
       };
 
@@ -1321,6 +1505,7 @@ export const AIChatProvider = ({ children }) => {
     isSettingsSaving,
     fetchAISettings,
     saveAISettings,
+    deleteAISettings,
     resetAISettings,
     testAISettings,
     isSending,
@@ -1352,6 +1537,7 @@ export const AIChatProvider = ({ children }) => {
     isSettingsSaving,
     fetchAISettings,
     saveAISettings,
+    deleteAISettings,
     resetAISettings,
     testAISettings,
     isSending,

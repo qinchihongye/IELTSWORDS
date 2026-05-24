@@ -448,7 +448,7 @@ const Profile = () => {
                 <>
                   {renderAvatarGroup('章节解锁头像', groupedAvatars.chapter, 'chapter')}
                   {renderAvatarGroup('VIP 专属头像', groupedAvatars.vip, 'vip')}
-                  {renderAvatarGroup('普通头像', groupedAvatars.normal)}
+                  {renderAvatarGroup('阶段解锁头像', groupedAvatars.normal)}
                   {!groupedAvatars.chapter.length && !groupedAvatars.vip.length && !groupedAvatars.normal.length && (
                     <div className="profile-avatar-empty">当前没有可用的内置头像</div>
                   )}

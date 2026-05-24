@@ -500,6 +500,7 @@ class AIChatMessage(BaseModel):
 
 
 class AICustomConfig(BaseModel):
+    provider: Optional[str] = None
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
@@ -616,6 +617,7 @@ class AISettingsUpdate(BaseModel):
 class AISettingsTestRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
+    provider: Optional[str] = None
     base_url: Optional[str] = None
     model: Optional[str] = None
     model_display_name: Optional[str] = None

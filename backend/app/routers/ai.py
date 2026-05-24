@@ -649,7 +649,14 @@ def resolve_active_ai_config(requested_model: str | None = None, custom_config: 
     requested_model_name = normalize_user_model(requested_model)
 
     if custom_config and custom_config.api_key:
-        base_url = normalize_base_url(custom_config.base_url, require_public_https=True) or OPENAI_BASE_URL
+        if custom_config.provider == 'siliconflow':
+            base_url = "https://api.siliconflow.cn/v1"
+        elif custom_config.provider == 'deepseek':
+            base_url = "https://api.deepseek.com"
+        elif custom_config.provider == 'moonshot':
+            base_url = "https://api.moonshot.cn/v1"
+        else:
+            base_url = normalize_base_url(custom_config.base_url, require_public_https=True) or OPENAI_BASE_URL
         model_name = requested_model_name or normalize_user_model(custom_config.model) or OPENAI_MODEL
         return base_url, custom_config.api_key, model_name
 
@@ -662,6 +669,21 @@ def resolve_active_ai_config(requested_model: str | None = None, custom_config: 
     return OPENAI_BASE_URL, OPENAI_API_KEY, requested_model_name or OPENAI_MODEL
 
 
+def merge_system_messages(messages: list[dict]) -> list[dict]:
+    system_contents = []
+    other_messages = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            system_contents.append(str(msg.get("content") or ""))
+        else:
+            other_messages.append(msg)
+    
+    if not system_contents:
+        return other_messages
+    
+    return [{"role": "system", "content": "\n\n".join(system_contents)}] + other_messages
+
+
 def build_chat_completion_payload(
     messages: list[dict],
     model_name: str,
@@ -669,19 +691,26 @@ def build_chat_completion_payload(
     max_tokens: int | None = None,
     stream: bool = False,
     enable_thinking: bool | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model_name,
-        "messages": messages,
+        "messages": merge_system_messages(messages),
         "temperature": temperature,
         "stream": stream,
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    
     if enable_thinking is not None:
-        payload["chat_template_kwargs"] = {
-            "enable_thinking": enable_thinking,
-        }
+        if provider == "deepseek":
+            payload["thinking"] = {"type": "enabled" if enable_thinking else "disabled"}
+            if enable_thinking:
+                payload["reasoning_effort"] = "high"
+        else:
+            payload["chat_template_kwargs"] = {
+                "enable_thinking": enable_thinking,
+            }
     return payload
 
 
@@ -707,6 +736,7 @@ async def call_openai_compatible_api(
     temperature: float = 0.7,
     max_tokens: int | None = None,
     enable_thinking: bool | None = None,
+    provider: str | None = None,
 ) -> tuple[str, str]:
     payload = build_chat_completion_payload(
         messages=messages,
@@ -715,6 +745,7 @@ async def call_openai_compatible_api(
         max_tokens=max_tokens,
         stream=False,
         enable_thinking=enable_thinking,
+        provider=provider,
     )
 
     url = f"{base_url}/chat/completions"
@@ -749,7 +780,7 @@ async def call_openai_compatible_api(
     )
     answer, reasoning = extract_text_parts(message_payload)
     answer, reasoning = normalize_answer_and_reasoning(answer, reasoning)
-    if not answer:
+    if not answer and not reasoning:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI 服务返回了空结果",
@@ -766,6 +797,7 @@ async def stream_openai_compatible_api(
     temperature: float = 0.7,
     max_tokens: int | None = None,
     enable_thinking: bool | None = None,
+    provider: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     payload = build_chat_completion_payload(
         messages=messages,
@@ -774,6 +806,7 @@ async def stream_openai_compatible_api(
         max_tokens=max_tokens,
         stream=True,
         enable_thinking=enable_thinking,
+        provider=provider,
     )
 
     url = f"{base_url}/chat/completions"
@@ -873,8 +906,10 @@ async def stream_openai_compatible_api(
         detail = "AI 服务暂时不可用"
         try:
             error_body = exc.response.json()
+            logger.error("AI service HTTPStatusError: %s", error_body)
             detail = error_body.get("error", {}).get("message") or error_body.get("detail") or detail
         except Exception:
+            logger.error("AI service HTTPStatusError (non-json): %s", exc.response.text)
             pass
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
     except httpx.RequestError as exc:
@@ -886,7 +921,12 @@ async def stream_openai_compatible_api(
 
     answer = streamed_answer.strip()
     reasoning = merge_reasoning_text("".join(explicit_reasoning_parts), streamed_tagged_reasoning)
-    if not answer:
+    
+    if not answer and reasoning:
+        answer = reasoning.strip()
+        reasoning = ""
+
+    if not answer and not reasoning:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI 服务返回了空结果",
@@ -925,18 +965,29 @@ async def test_ai_settings(
             detail="系统尚未配置默认 API Key，请提供自定义 API Key",
         )
 
-    base_url = normalize_base_url(payload.base_url, require_public_https=bool(payload.base_url)) or OPENAI_BASE_URL
+    if payload.provider == 'siliconflow':
+        base_url = "https://api.siliconflow.cn/v1"
+    elif payload.provider == 'deepseek':
+        base_url = "https://api.deepseek.com"
+    elif payload.provider == 'moonshot':
+        base_url = "https://api.moonshot.cn/v1"
+    else:
+        base_url = normalize_base_url(payload.base_url, require_public_https=bool(payload.base_url)) or OPENAI_BASE_URL
     model_name = normalize_user_model(payload.model) or OPENAI_MODEL
     active_source = "custom" if input_api_key else "system"
 
+    # For DeepSeek, explicitly disable thinking during test to avoid
+    # all tokens going to reasoning_content with content left empty.
+    test_enable_thinking = False if payload.provider == 'deepseek' else None
+
     await call_openai_compatible_api(
-        messages=[{"role": "user", "content": "Reply with OK only."}],
+        messages=[{"role": "user", "content": "Hello"}],
         base_url=base_url,
         api_key=api_key,
         model_name=model_name,
-        temperature=0,
-        max_tokens=8,
-        enable_thinking=OPENAI_ENABLE_THINKING if active_source == "system" else None,
+        max_tokens=20,
+        enable_thinking=test_enable_thinking,
+        provider=payload.provider,
     )
 
     return {
@@ -955,6 +1006,10 @@ async def stream_chat_with_ai(
     """
     Berry 流式聊天接口
     """
+    import json
+    with open("/tmp/backend_payload.json", "w") as f:
+        json.dump(payload.dict(), f, ensure_ascii=False)
+
     cleaned_messages = [
         {"role": message.role, "content": message.content}
         for message in payload.messages
@@ -971,6 +1026,7 @@ async def stream_chat_with_ai(
 
     base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
     active_source = get_active_source(payload.custom_config)
+    provider = payload.custom_config.provider if payload.custom_config else None
     enable_thinking = payload.enable_thinking
     if enable_thinking is None and active_source == "system":
         enable_thinking = OPENAI_ENABLE_THINKING
@@ -1042,6 +1098,7 @@ async def stream_chat_with_ai(
                 api_key=api_key,
                 model_name=active_model,
                 enable_thinking=enable_thinking,
+                provider=provider,
             ):
                 if event.get("type") == "done":
                     event["model"] = active_model
@@ -1107,6 +1164,7 @@ async def chat_with_ai(
 
     base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
     active_source = get_active_source(payload.custom_config)
+    provider = payload.custom_config.provider if payload.custom_config else None
     enable_thinking = payload.enable_thinking
     if enable_thinking is None and active_source == "system":
         enable_thinking = OPENAI_ENABLE_THINKING
@@ -1116,6 +1174,7 @@ async def chat_with_ai(
         api_key=api_key,
         model_name=active_model,
         enable_thinking=enable_thinking,
+        provider=provider,
     )
 
     return {

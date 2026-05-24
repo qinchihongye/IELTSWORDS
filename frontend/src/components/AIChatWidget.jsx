@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Button, Drawer, Dropdown, Empty, FloatButton, Input, Modal, Select, Space, Tooltip, Typography, message } from 'antd';
-import { AudioOutlined, SoundOutlined, BulbOutlined, CaretUpOutlined, ClockCircleOutlined, CloseOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, GlobalOutlined, LinkOutlined, MessageOutlined, PlusOutlined, ReloadOutlined, RightOutlined, RobotOutlined, SearchOutlined, SendOutlined, SettingOutlined, StarFilled, StarOutlined, ThunderboltFilled } from '@ant-design/icons';
-import { useAIChat } from '../context/AIChatContext';
+import { AudioOutlined, SoundOutlined, BulbOutlined, CaretUpOutlined, ClockCircleOutlined, CloseOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, GlobalOutlined, LinkOutlined, MessageOutlined, PlusOutlined, ReloadOutlined, RightOutlined, RobotOutlined, SearchOutlined, SendOutlined, SettingOutlined, StarFilled, StarOutlined, ThunderboltFilled, ArrowLeftOutlined, CheckOutlined } from '@ant-design/icons';
+import { useAIChat, getLocalAISettings } from '../context/AIChatContext';
 import { useAuth } from '../context/AuthContext';
 import AIMarkdownContent from './AIMarkdownContent';
 import UserAvatar from './UserAvatar';
@@ -227,7 +227,7 @@ const buildWebSearchHTML = (webSearch) => {
   `;
 };
 
-const buildChatExportHTML = (session, userAvatarSrc, aiAvatarSrc) => {
+const buildChatExportHTML = (session, userAvatarSrc, aiAvatarSrc, userName = '用户') => {
   const title = normalizeHistoryText(session?.title) || '新聊天';
   const updatedAt = formatChatSessionTime(session?.updatedAt || session?.createdAt);
 
@@ -236,7 +236,7 @@ const buildChatExportHTML = (session, userAvatarSrc, aiAvatarSrc) => {
     .map((msg) => {
       const isUser = msg.role === 'user';
       const roleClass = isUser ? 'user' : 'ai';
-      const roleName = isUser ? '用户' : 'Berry';
+      const roleName = isUser ? userName : 'Berry';
       const avatarSrc = isUser ? userAvatarSrc : aiAvatarSrc;
       const webSearchHtml = !isUser ? buildWebSearchHTML(msg.webSearch) : '';
 
@@ -422,6 +422,33 @@ const bubbleStyle = (role, isError) => {
   };
 };
 
+const ReasoningBlock = ({ reasoning, reasoningComplete }) => {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollRef.current && !reasoningComplete) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [reasoning, reasoningComplete]);
+
+  return (
+    <div
+      ref={scrollRef}
+      style={{
+        padding: '0 10px 10px',
+        borderTop: '1px solid rgba(181, 144, 232, 0.08)',
+        minWidth: 0,
+        maxWidth: '100%',
+        maxHeight: '180px',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+      }}
+    >
+      <AIMarkdownContent content={reasoning} tone="subtle" />
+    </div>
+  );
+};
+
 const AIChatWidget = () => {
   const { user } = useAuth();
   const {
@@ -447,6 +474,7 @@ const AIChatWidget = () => {
     setWebSearchEnabled,
     setWebSearchFreshness,
     saveAISettings,
+    deleteAISettings,
     resetAISettings,
     testAISettings,
     resetConversation,
@@ -455,11 +483,13 @@ const AIChatWidget = () => {
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [editingConfigId, setEditingConfigId] = useState(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyView, setHistoryView] = useState('all');
   const [historySearchKeyword, setHistorySearchKeyword] = useState('');
   const [editingHistorySession, setEditingHistorySession] = useState(null);
   const [editingHistoryTitle, setEditingHistoryTitle] = useState('');
+  const [providerDraft, setProviderDraft] = useState('custom');
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
   const [modelDisplayNameDraft, setModelDisplayNameDraft] = useState('');
@@ -568,9 +598,9 @@ const AIChatWidget = () => {
     () => chatContext?.shortcuts || [],
     [chatContext]
   );
-  const modelCount = (aiSettings.availableModels || []).length + (aiSettings.customModel ? 1 : 0);
+  const modelCount = (aiSettings.availableModels || []).length + (aiSettings.customConfigs || []).length;
   const modelOptions = useMemo(() => {
-    const systemModels = (aiSettings.availableModels || []).filter(m => m !== aiSettings.customModel);
+    const systemModels = (aiSettings.availableModels || []);
     const options = groupModels(
       systemModels,
       aiSettings.activeModel,
@@ -579,13 +609,13 @@ const AIChatWidget = () => {
       aiSettings.systemModelDisplayName
     );
     
-    if (aiSettings.customModel) {
+    if (aiSettings.customConfigs && aiSettings.customConfigs.length > 0) {
       options.unshift({
         label: '我的自定义模型',
-        options: [{
-          label: buildModelLabel(aiSettings.customModelDisplayName || aiSettings.customModel),
-          value: aiSettings.customModel,
-        }],
+        options: aiSettings.customConfigs.map(cfg => ({
+          label: buildModelLabel(cfg.modelDisplayName || cfg.model),
+          value: cfg.id,
+        })),
       });
     }
     return options;
@@ -593,8 +623,7 @@ const AIChatWidget = () => {
     aiSettings.availableModels,
     aiSettings.activeModel,
     aiSettings.activeModelDisplayName,
-    aiSettings.customModel,
-    aiSettings.customModelDisplayName,
+    aiSettings.customConfigs,
     aiSettings.systemModel,
     aiSettings.systemModelDisplayName,
   ]);
@@ -900,7 +929,8 @@ const AIChatWidget = () => {
     const userAvatarUrl = getAvatarSrc(user);
     const userAvatarSrc = userAvatarUrl.startsWith('http') ? userAvatarUrl : new URL(userAvatarUrl, window.location.origin).href;
 
-    const blob = new Blob([buildChatExportHTML(session, userAvatarSrc, aiAvatarSrc)], { type: 'text/html;charset=utf-8' });
+    const userName = user?.username || '用户';
+    const blob = new Blob([buildChatExportHTML(session, userAvatarSrc, aiAvatarSrc, userName)], { type: 'text/html;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -981,9 +1011,11 @@ const AIChatWidget = () => {
   };
 
   const openSettingsModal = () => {
-    setBaseUrlDraft(aiSettings.customBaseUrl || '');
-    setModelDraft(aiSettings.customModel || '');
-    setModelDisplayNameDraft(aiSettings.customModelDisplayName || '');
+    setEditingConfigId(null);
+    setProviderDraft('custom');
+    setBaseUrlDraft('');
+    setModelDraft('');
+    setModelDisplayNameDraft('');
     setApiKeyDraft('');
     setTestResult(null);
     setIsSettingsModalOpen(true);
@@ -991,21 +1023,24 @@ const AIChatWidget = () => {
 
   const closeSettingsModal = () => {
     setIsSettingsModalOpen(false);
+    setEditingConfigId(null);
     setTestResult(null);
     setApiKeyDraft('');
   };
 
   const handleSaveSettings = async () => {
+    const isNew = editingConfigId === 'new';
     const nextSettings = await saveAISettings({
+      provider: providerDraft,
       baseUrl: baseUrlDraft,
       model: modelDraft,
       modelDisplayName: modelDisplayNameDraft,
       apiKey: apiKeyDraft,
-    });
+    }, isNew ? null : editingConfigId);
 
     if (nextSettings) {
       message.success('Berry 配置已保存');
-      closeSettingsModal();
+      setEditingConfigId(null);
     }
   };
 
@@ -1013,6 +1048,8 @@ const AIChatWidget = () => {
     const nextSettings = await resetAISettings();
     if (nextSettings) {
       message.success('已恢复 Berry 默认配置');
+      setEditingConfigId(null);
+      setProviderDraft('custom');
       setBaseUrlDraft('');
       setModelDraft('');
       setModelDisplayNameDraft('');
@@ -1025,12 +1062,18 @@ const AIChatWidget = () => {
     setIsTestingConnection(true);
     setTestResult(null);
 
+    const originalConfig = editingConfigId && editingConfigId !== 'new'
+      ? (getLocalAISettings()?.configs || []).find(cfg => cfg.id === editingConfigId)
+      : null;
+    const apiKeyToTest = apiKeyDraft || originalConfig?.apiKey || '';
+
     try {
       const result = await testAISettings({
+        provider: providerDraft,
         baseUrl: baseUrlDraft,
         model: modelDraft,
         modelDisplayName: modelDisplayNameDraft,
-        apiKey: apiKeyDraft,
+        apiKey: apiKeyToTest,
       });
 
       if (result?.success) {
@@ -1051,6 +1094,56 @@ const AIChatWidget = () => {
     } finally {
       setIsTestingConnection(false);
     }
+  };
+
+  const handleTestConnectionForConfig = async (config) => {
+    setIsTestingConnection(true);
+    try {
+      const storedConfig = (getLocalAISettings()?.configs || []).find(cfg => cfg.id === config.id);
+      const result = await testAISettings({
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        model: config.model,
+        modelDisplayName: config.modelDisplayName,
+        apiKey: storedConfig?.apiKey || '',
+      });
+
+      if (result?.success) {
+        message.success(`模型 ${config.modelDisplayName || config.model} 连接测试成功`);
+      } else {
+        message.error(`模型 ${config.modelDisplayName || config.model} 连接测试失败: ${result?.message || '未知原因'}`);
+      }
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const handleDeleteSettings = async (configId) => {
+    const nextSettings = await deleteAISettings(configId);
+    if (nextSettings) {
+      message.success('已成功删除该模型配置');
+    }
+  };
+
+  const openEditConfig = (config) => {
+    const storedConfig = (getLocalAISettings()?.configs || []).find(cfg => cfg.id === config.id);
+    setEditingConfigId(config.id);
+    setProviderDraft(config.provider);
+    setBaseUrlDraft(config.baseUrl);
+    setModelDraft(config.model);
+    setModelDisplayNameDraft(config.modelDisplayName);
+    setApiKeyDraft('');
+    setTestResult(null);
+  };
+
+  const openAddConfig = () => {
+    setEditingConfigId('new');
+    setProviderDraft('custom');
+    setBaseUrlDraft('');
+    setModelDraft('');
+    setModelDisplayNameDraft('');
+    setApiKeyDraft('');
+    setTestResult(null);
   };
 
   const startResizingDrawer = (event) => {
@@ -1220,12 +1313,12 @@ const AIChatWidget = () => {
         .ai-chat-history-card:hover,
         .ai-chat-history-card:focus-visible {
           border-color: rgba(181, 144, 232, 0.36);
-          background: #ffffff;
+          background: rgba(181, 144, 232, 0.06);
           box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
         }
         .ai-chat-history-card--active {
           border-color: rgba(181, 144, 232, 0.42);
-          background: rgba(181, 144, 232, 0.15);
+          background: rgba(181, 144, 232, 0.16);
           box-shadow: 0 10px 22px rgba(181, 144, 232, 0.12);
         }
         .ai-chat-history-card-top {
@@ -1858,19 +1951,7 @@ const AIChatWidget = () => {
                                 {isReasoningExpanded ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
                               </button>
                               {isReasoningExpanded && (
-                                <div
-                                  style={{
-                                    padding: '0 10px 10px',
-                                    borderTop: '1px solid rgba(181, 144, 232, 0.08)',
-                                    minWidth: 0,
-                                    maxWidth: '100%',
-                                    maxHeight: '180px',
-                                    overflowY: 'auto',
-                                    overflowX: 'hidden',
-                                  }}
-                                >
-                                  <AIMarkdownContent content={message.reasoning} tone="subtle" />
-                                </div>
+                                <ReasoningBlock reasoning={message.reasoning} reasoningComplete={message.reasoningComplete} />
                               )}
                             </div>
                           )}
@@ -2733,122 +2814,307 @@ const AIChatWidget = () => {
         />
       </Modal>
 
-      <Modal
-        title="Berry 配置"
-        open={isSettingsModalOpen}
-        onCancel={closeSettingsModal}
-        onOk={() => void handleSaveSettings()}
-        okText="保存配置"
-        cancelText="取消"
-        confirmLoading={isSettingsSaving}
-        destroyOnHidden
-      >
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Text style={{ color: '#64748b', lineHeight: 1.7 }}>
-            {aiSettings.systemConfigured
-              ? 'Berry 已经可以直接使用。你也可以额外配置自己的模型；你的自定义配置和聊天记录将仅保存在当前浏览器本地，保护隐私。'
-              : '当前 Berry 默认配置未完成。你可以填写自己的配置，自定义配置和聊天记录将仅保存在当前浏览器本地。'}
-          </Text>
-
-          <div>
-            <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
-              Base URL
-            </Text>
-            <Input
-              prefix={<LinkOutlined style={{ color: '#94a3b8' }} />}
-              value={baseUrlDraft}
-              onChange={(event) => setBaseUrlDraft(event.target.value)}
-              placeholder="例如: https://api.openai.com/v1"
-              maxLength={300}
-            />
-          </div>
-
-          <div>
-            <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
-              模型名称
-            </Text>
-            <Input
-              value={modelDraft}
-              onChange={(event) => setModelDraft(event.target.value)}
-              placeholder="例如: gpt-5.5"
-              maxLength={120}
-            />
-          </div>
-
-          <div>
-            <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
-              显示名称 <span style={{ fontWeight: 400, color: '#94a3b8' }}>(选填)</span>
-            </Text>
-            <Input
-              value={modelDisplayNameDraft}
-              onChange={(event) => setModelDisplayNameDraft(event.target.value)}
-              placeholder="例如: gpt-5.5"
-              maxLength={120}
-            />
-          </div>
-
-          <div>
-            <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
-              API Key
-            </Text>
-            <Input.Password
-              value={apiKeyDraft}
-              onChange={(event) => setApiKeyDraft(event.target.value)}
-              placeholder={aiSettings.hasApiKey ? '已保存，如需修改请重新输入' : '请输入你的 API Key'}
-              maxLength={300}
-            />
-            {aiSettings.maskedApiKey && (
-              <Text style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-                当前已保存：{aiSettings.maskedApiKey}
-              </Text>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Button
-              icon={<LinkOutlined />}
-              onClick={() => void handleTestConnection()}
-              loading={isTestingConnection}
-              disabled={isSettingsSaving}
-            >
-             检查连接
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              danger
-              onClick={() => void handleResetSettings()}
-              loading={isSettingsSaving}
-            >
+      {!editingConfigId ? (
+        <Modal
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <SettingOutlined style={{ color: '#b590e8' }} />
+              <span>Berry 模型管理</span>
+            </div>
+          }
+          open={isSettingsModalOpen}
+          onCancel={closeSettingsModal}
+          footer={[
+            <Button key="reset" danger icon={<ReloadOutlined />} onClick={() => void handleResetSettings()}>
               恢复默认
+            </Button>,
+            <Button key="close" type="primary" onClick={closeSettingsModal}>
+              完成
             </Button>
-          </div>
+          ]}
+          width={500}
+          destroyOnClose
+        >
+          <Space direction="vertical" size={16} style={{ width: '100%', marginTop: 8 }}>
+            <Text style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6 }}>
+              你配置的自定义模型和 API 密钥都保存在当前浏览器本地。你可以添加多个不同的模型或服务商配置。
+            </Text>
 
-          {testResult && (
-            <div
-              style={{
-                borderRadius: 12,
-                padding: '12px 14px',
-                background: testResult.success ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
-                border: `1px solid ${testResult.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.22)'}`,
-              }}
-            >
-              <Text style={{ display: 'block', color: testResult.success ? '#166534' : '#b91c1c', fontWeight: 600 }}>
-                {testResult.message}
-              </Text>
-              {testResult.success && (
-                <>
-                  <Text style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#166534' }}>
-                    连接来源：{testResult.activeSource === 'custom' ? '用户自定义配置' : '系统默认配置'}
-                  </Text>
-                  <Text style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#166534' }}>
-                    生效模型：{testResult.activeModel}
-                  </Text>
-                </>
+            <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+              {(aiSettings.customConfigs || []).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', background: 'rgba(241, 245, 249, 0.5)', borderRadius: 16 }}>
+                  <Empty description="暂无自定义配置，默认使用系统配置" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                </div>
+              ) : (
+                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                  {(aiSettings.customConfigs || []).map((cfg) => {
+                    const isActive = selectedModel === cfg.id;
+                    return (
+                      <div
+                        key={cfg.id}
+                        onClick={() => selectModel(cfg.id)}
+                        style={{
+                          padding: '12px 16px',
+                          borderRadius: 14,
+                          border: `1.5px solid ${isActive ? 'rgba(181, 144, 232, 0.45)' : 'rgba(148, 163, 184, 0.15)'}`,
+                          background: isActive ? 'rgba(181, 144, 232, 0.05)' : 'rgba(255, 255, 255, 0.5)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = isActive ? 'rgba(181, 144, 232, 0.6)' : 'rgba(181, 144, 232, 0.3)';
+                          e.currentTarget.style.background = isActive ? 'rgba(181, 144, 232, 0.08)' : 'rgba(255, 255, 255, 0.8)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = isActive ? 'rgba(181, 144, 232, 0.45)' : 'rgba(148, 163, 184, 0.15)';
+                          e.currentTarget.style.background = isActive ? 'rgba(181, 144, 232, 0.05)' : 'rgba(255, 255, 255, 0.5)';
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                          <div style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: '50%',
+                            border: `2px solid ${isActive ? '#b590e8' : '#cbd5e1'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            background: isActive ? '#b590e8' : 'transparent',
+                            transition: 'all 0.15s ease',
+                          }}>
+                            {isActive && <CheckOutlined style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }} />}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                                {cfg.modelDisplayName || cfg.model}
+                              </span>
+                              <span style={{
+                                fontSize: 10,
+                                fontWeight: 500,
+                                padding: '2px 6px',
+                                borderRadius: 6,
+                                background: 'rgba(148, 163, 184, 0.12)',
+                                color: '#64748b',
+                              }}>
+                                {cfg.provider === 'custom' ? '自定义' : cfg.provider === 'deepseek' ? 'DeepSeek' : cfg.provider === 'siliconflow' ? '硅基流动' : cfg.provider === 'moonshot' ? 'Kimi' : cfg.provider}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              模型名: {cfg.model}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                          <Tooltip title="测试连接">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<LinkOutlined style={{ color: '#64748b' }} />}
+                              onClick={() => void handleTestConnectionForConfig(cfg)}
+                              loading={isTestingConnection}
+                            />
+                          </Tooltip>
+                          <Tooltip title="编辑">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EditOutlined style={{ color: '#b590e8' }} />}
+                              onClick={() => openEditConfig(cfg)}
+                            />
+                          </Tooltip>
+                          <Tooltip title="删除">
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => void handleDeleteSettings(cfg.id)}
+                            />
+                          </Tooltip>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Space>
               )}
             </div>
-          )}
-        </Space>
-      </Modal>
+
+            <Button
+              type="dashed"
+              block
+              icon={<PlusOutlined />}
+              onClick={openAddConfig}
+              style={{
+                height: 40,
+                borderRadius: 12,
+                borderColor: 'rgba(181, 144, 232, 0.4)',
+                color: '#b590e8',
+              }}
+            >
+              添加自定义模型配置
+            </Button>
+          </Space>
+        </Modal>
+      ) : (
+        <Modal
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => setEditingConfigId(null)}
+                style={{ padding: 0, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              />
+              <span>{editingConfigId === 'new' ? '添加自定义模型' : '编辑自定义模型'}</span>
+            </div>
+          }
+          open={isSettingsModalOpen}
+          onCancel={closeSettingsModal}
+          onOk={() => void handleSaveSettings()}
+          okText="保存配置"
+          cancelText="返回列表"
+          cancelButtonProps={{
+            onClick: () => setEditingConfigId(null)
+          }}
+          confirmLoading={isSettingsSaving}
+          destroyOnClose
+        >
+          <Space direction="vertical" size={12} style={{ width: '100%', marginTop: 8 }}>
+            <div>
+              <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+                配置模式 / 提供商
+              </Text>
+              <Select
+                value={providerDraft}
+                onChange={(value) => setProviderDraft(value)}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'custom', label: '自由配置 (Custom)' },
+                  { value: 'siliconflow', label: 'Siliconflow (硅基流动)' },
+                  { value: 'deepseek', label: 'DeepSeek (深度求索)' },
+                  { value: 'moonshot', label: 'Moonshot (Kimi)' },
+                ]}
+              />
+            </div>
+
+            {providerDraft === 'custom' && (
+              <div>
+                <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+                  Base URL
+                </Text>
+                <Input
+                  prefix={<LinkOutlined style={{ color: '#94a3b8' }} />}
+                  value={baseUrlDraft}
+                  onChange={(event) => setBaseUrlDraft(event.target.value)}
+                  placeholder="例如: https://api.openai.com/v1"
+                  maxLength={300}
+                />
+              </div>
+            )}
+
+            {providerDraft === 'deepseek' && (
+              <div style={{ marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  已应用 DeepSeek 官方接口默认配置。思考模式受全局【深度思考】开关控制，开启后强度自动设为 high。
+                </Text>
+              </div>
+            )}
+
+            {providerDraft === 'moonshot' && (
+              <div style={{ marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  已应用 Moonshot (Kimi) 官方接口默认配置。支持 kimi-k2-0711-preview 等模型。
+                </Text>
+              </div>
+            )}
+
+            <div>
+              <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+                模型名称
+              </Text>
+              <Input
+                value={modelDraft}
+                onChange={(event) => setModelDraft(event.target.value)}
+                placeholder="例如: gpt-5.5"
+                maxLength={120}
+              />
+            </div>
+
+            <div>
+              <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+                显示名称 <span style={{ fontWeight: 400, color: '#94a3b8' }}>(选填)</span>
+              </Text>
+              <Input
+                value={modelDisplayNameDraft}
+                onChange={(event) => setModelDisplayNameDraft(event.target.value)}
+                placeholder="例如: gpt-5.5"
+                maxLength={120}
+              />
+            </div>
+
+            <div>
+              <Text style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}>
+                API Key
+              </Text>
+              <Input.Password
+                value={apiKeyDraft}
+                onChange={(event) => setApiKeyDraft(event.target.value)}
+                placeholder={editingConfigId !== 'new' ? '已保存，如需修改请重新输入' : '请输入你的 API Key'}
+                maxLength={300}
+              />
+              {editingConfigId !== 'new' && (
+                <Text style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                  当前已保存：********
+                </Text>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+              <Button
+                icon={<LinkOutlined />}
+                onClick={() => void handleTestConnection()}
+                loading={isTestingConnection}
+                disabled={isSettingsSaving}
+              >
+                检查连接
+              </Button>
+            </div>
+
+            {testResult && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                  background: testResult.success ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                  border: `1px solid ${testResult.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.22)'}`,
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ display: 'block', color: testResult.success ? '#166534' : '#b91c1c', fontWeight: 600 }}>
+                  {testResult.message}
+                </Text>
+                {testResult.success && (
+                  <>
+                    <Text style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#166534' }}>
+                      连接来源：{testResult.activeSource === 'custom' ? '用户自定义配置' : '系统默认配置'}
+                    </Text>
+                    <Text style={{ display: 'block', marginTop: 4, fontSize: 12, color: '#166534' }}>
+                      生效模型：{testResult.activeModel}
+                    </Text>
+                  </>
+                )}
+              </div>
+            )}
+          </Space>
+        </Modal>
+      )}
     </>
   );
 };
