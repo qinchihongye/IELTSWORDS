@@ -42,7 +42,11 @@ const DEFAULT_AI_SETTINGS = {
   activeModel: '',
   activeModelDisplayName: '',
   availableModels: [],
+  availableModelOptions: [],
   selectedModel: '',
+  systemModelKey: '',
+  defaultSystemModelKey: '',
+  canManageSystemModel: false,
   thinkingEnabled: false,
   webSearchEnabled: false,
   webSearchFreshness: DEFAULT_WEB_SEARCH_FRESHNESS,
@@ -424,9 +428,61 @@ const normalizeModelList = (models) => {
   return Array.from(new Set(items.map((item) => String(item || '').trim()).filter(Boolean)));
 };
 
+const inferSystemModelProvider = (model, provider, key) => {
+  const explicitProvider = String(provider || '').trim().toLowerCase();
+  if (explicitProvider) {
+    return explicitProvider;
+  }
+
+  const value = `${String(model || '')} ${String(key || '')}`.toLowerCase();
+  if (value.includes('siliconflow')) return 'siliconflow';
+  if (value.includes('deepseek')) return 'deepseek';
+  if (value.includes('moonshot') || value.includes('kimi')) return 'moonshot';
+  if (value.includes('gpt') || value.includes('openai')) return 'openai';
+  return 'custom';
+};
+
+const normalizeSystemModelOptions = (options, fallbackModels = [], activeModel = '', activeModelDisplayName = '') => {
+  const explicitOptions = Array.isArray(options) ? options : [];
+  const normalizedExplicit = [];
+  const seenKeys = new Set();
+
+  explicitOptions.forEach((item, index) => {
+    const key = String(item?.key || '').trim();
+    const model = String(item?.model || '').trim();
+    if (!key || !model || seenKeys.has(key)) {
+      return;
+    }
+
+    seenKeys.add(key);
+    normalizedExplicit.push({
+      key,
+      model,
+      displayName: String(item?.display_name || item?.displayName || model).trim() || model,
+      provider: inferSystemModelProvider(model, item?.provider, key),
+      source: 'system',
+      isDefault: Boolean(item?.is_default ?? item?.isDefault ?? index === 0),
+    });
+  });
+
+  if (normalizedExplicit.length > 0) {
+    return normalizedExplicit;
+  }
+
+  return normalizeModelList(fallbackModels).map((model, index) => ({
+    key: model,
+    model,
+    displayName: model === activeModel && activeModelDisplayName
+      ? activeModelDisplayName
+      : model,
+    provider: inferSystemModelProvider(model, '', model),
+    source: 'system',
+    isDefault: index === 0,
+  }));
+};
+
 const normalizeAISettings = (data, previousSelectedModel = '') => {
   const localSettings = getLocalAISettings() || { configs: [], activeConfigId: null };
-  const availableModels = normalizeModelList(data?.available_models);
   const systemThinkingEnabled = typeof data?.thinking_enabled === 'boolean'
     ? data.thinking_enabled
     : null;
@@ -436,6 +492,18 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
   
   const systemModel = data?.active_model || '';
   const systemModelDisplayName = data?.active_model_display_name || '';
+  const availableModelOptions = normalizeSystemModelOptions(
+    data?.available_model_options,
+    data?.available_models,
+    systemModel,
+    systemModelDisplayName,
+  );
+  const availableModels = availableModelOptions.map((item) => item.key);
+  const systemModelKey = data?.active_system_model_key
+    || availableModelOptions.find((item) => item.isDefault)?.key
+    || availableModels[0]
+    || '';
+  const defaultSystemModelKey = data?.default_system_model_key || systemModelKey;
 
   const customConfigs = (localSettings.configs || []).map(cfg => ({
     id: cfg.id,
@@ -447,7 +515,7 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
     maskedApiKey: cfg.apiKey ? '*'.repeat(8) : '',
   }));
 
-  const systemDefault = availableModels[0] || '';
+  const systemDefault = defaultSystemModelKey || availableModels[0] || '';
   const customDefault = customConfigs.find(cfg => cfg.id === localSettings.activeConfigId) || customConfigs[0] || null;
   
   let selectedModel = '';
@@ -466,10 +534,11 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
   }
 
   const activeConfig = customConfigs.find(cfg => cfg.id === selectedModel);
-  const activeModelName = activeConfig ? activeConfig.model : selectedModel;
+  const matchingSystemModel = availableModelOptions.find((item) => item.key === selectedModel) || null;
+  const activeModelName = activeConfig ? activeConfig.model : (matchingSystemModel?.model || systemModel);
   const activeModelDisplayName = activeConfig 
     ? (activeConfig.modelDisplayName || activeConfig.model)
-    : (systemModelDisplayName || selectedModel);
+    : (matchingSystemModel?.displayName || systemModelDisplayName || selectedModel);
 
   return {
     customConfigs,
@@ -486,9 +555,13 @@ const normalizeAISettings = (data, previousSelectedModel = '') => {
     activeModel: activeModelName,
     activeModelDisplayName,
     availableModels,
+    availableModelOptions,
     selectedModel,
     systemModel,
     systemModelDisplayName,
+    systemModelKey,
+    defaultSystemModelKey,
+    canManageSystemModel: Boolean(data?.can_manage_system_model),
     thinkingEnabled: storedThinkingEnabled ?? systemThinkingEnabled ?? false,
     systemThinkingEnabled,
     webSearchEnabled: storedWebSearchEnabled,
@@ -659,6 +732,7 @@ export const AIChatProvider = ({ children }) => {
       };
 
       const activeConfig = (prev.customConfigs || []).find(cfg => cfg.id === normalizedModel);
+      const systemModelOption = (prev.availableModelOptions || []).find(option => option.key === normalizedModel);
       const nextNormalized = {
         ...next,
         activeConfigId: activeConfig ? activeConfig.id : prev.activeConfigId,
@@ -668,10 +742,15 @@ export const AIChatProvider = ({ children }) => {
         customModelDisplayName: activeConfig ? activeConfig.modelDisplayName : '',
         usesCustomConfig: Boolean(activeConfig),
         activeSource: activeConfig ? 'custom' : 'system',
-        activeModel: activeConfig ? activeConfig.model : normalizedModel,
+        systemModelKey: activeConfig ? prev.systemModelKey : (systemModelOption?.key || prev.systemModelKey),
+        systemModel: activeConfig ? prev.systemModel : (systemModelOption?.model || prev.systemModel),
+        systemModelDisplayName: activeConfig
+          ? prev.systemModelDisplayName
+          : (systemModelOption?.displayName || prev.systemModelDisplayName),
+        activeModel: activeConfig ? activeConfig.model : (systemModelOption?.model || normalizedModel),
         activeModelDisplayName: activeConfig
           ? (activeConfig.modelDisplayName || activeConfig.model)
-          : (prev.systemModelDisplayName || normalizedModel),
+          : (systemModelOption?.displayName || prev.systemModelDisplayName || normalizedModel),
       };
 
       aiSettingsRef.current = nextNormalized;
@@ -754,6 +833,32 @@ export const AIChatProvider = ({ children }) => {
       return DEFAULT_AI_SETTINGS;
     } finally {
       setIsSettingsLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  const setSystemDefaultModel = useCallback(async (modelKey) => {
+    const normalizedModelKey = typeof modelKey === 'string' ? modelKey.trim() : '';
+    if (!normalizedModelKey || !isAuthenticated) {
+      return null;
+    }
+
+    setIsSettingsSaving(true);
+    try {
+      const response = await apiClient.patch('/api/ai/settings/system-default-model', {
+        model_key: normalizedModelKey,
+      }, {
+        skipErrorHandler: true,
+      });
+      const nextSettings = normalizeAISettings(response.data, normalizedModelKey);
+      settingsLoadedRef.current = true;
+      aiSettingsRef.current = nextSettings;
+      setAISettings(nextSettings);
+      return nextSettings;
+    } catch (error) {
+      console.error('设置系统默认模型失败:', error);
+      throw error;
+    } finally {
+      setIsSettingsSaving(false);
     }
   }, [isAuthenticated]);
 
@@ -967,9 +1072,12 @@ export const AIChatProvider = ({ children }) => {
   }, [startNewConversation]);
 
   const openDrawer = useCallback(() => {
+    if (!isOpen) {
+      startNewConversation(chatContextRef.current);
+    }
     setIsOpen(true);
     void fetchAISettings();
-  }, [fetchAISettings]);
+  }, [fetchAISettings, isOpen, startNewConversation]);
   const closeDrawer = useCallback(() => setIsOpen(false), []);
 
   const saveAISettings = useCallback(async (settings, configId = null) => {
@@ -1195,9 +1303,16 @@ export const AIChatProvider = ({ children }) => {
       return null;
     }
 
+    const currentSettings = aiSettingsRef.current;
     const activeContext = normalizeContext(options.context || chatContext);
     if (options.context) {
       setChatContextState(activeContext);
+    }
+
+    let currentMessages = messagesRef.current;
+    const shouldOpenDrawer = options.openDrawer !== false;
+    if (shouldOpenDrawer && !isOpen) {
+      currentMessages = startNewConversation(activeContext);
     }
 
     if (options.openDrawer !== false) {
@@ -1215,11 +1330,27 @@ export const AIChatProvider = ({ children }) => {
       reasoning: '',
       reasoningComplete: false,
       streaming: true,
+      responseStarted: !currentSettings.webSearchEnabled,
       streamError: '',
       error: false,
+      webSearch: currentSettings.webSearchEnabled ? {
+        status: 'intent_pending',
+        query: trimmed,
+        count: 0,
+        sources: [],
+        message: '',
+        freshness: normalizeWebSearchFreshness(currentSettings.webSearchFreshness),
+        intent: {
+          originalQuery: trimmed,
+          rewrittenQuery: '',
+          shouldSearch: null,
+          forced: false,
+          reason: '',
+          pending: true,
+        },
+      } : undefined,
       ...contextMessageMeta,
     });
-    const currentMessages = messagesRef.current;
     const nextDisplayMessages = [...currentMessages, userMessage, assistantMessage];
     messagesRef.current = nextDisplayMessages;
     setMessages(nextDisplayMessages);
@@ -1277,7 +1408,6 @@ export const AIChatProvider = ({ children }) => {
     };
 
     try {
-      const currentSettings = aiSettingsRef.current;
       const selectedModel = currentSettings.selectedModel;
       const matchingCustomConfig = currentSettings.customConfigs?.find(cfg => cfg.id === selectedModel);
       const useCustomConfig = Boolean(matchingCustomConfig);
@@ -1330,9 +1460,11 @@ export const AIChatProvider = ({ children }) => {
           setAISettings((prev) => ({
             ...prev,
             activeModel: event.model || prev.activeModel,
+            activeModelDisplayName: event.model_display_name || prev.activeModelDisplayName,
             activeSource: event.active_source || prev.activeSource,
+            systemModelKey: event.system_model_key || prev.systemModelKey,
             canUseAI: true,
-            selectedModel: prev.selectedModel || event.model || prev.activeModel,
+            selectedModel: prev.selectedModel || event.system_model_key || event.model || prev.activeModel,
           }));
           return;
         }
@@ -1341,52 +1473,79 @@ export const AIChatProvider = ({ children }) => {
           patchAssistantMessage((message) => ({
             reasoning: `${message.reasoning || ''}${event.delta || ''}`,
             reasoningComplete: false,
+            responseStarted: true,
           }));
           return;
         }
 
-        if (event.type === 'web_search_start') {
+        if (event.type === 'web_search_intent') {
           patchAssistantMessageSync({
             webSearch: {
+              status: event.should_search ? 'planned' : 'skipped',
+              query: event.rewritten_query || event.query || trimmed,
+              count: 0,
+              sources: [],
+              message: '',
+              freshness: event.freshness || '',
+              intent: {
+                originalQuery: event.query || trimmed,
+                rewrittenQuery: event.rewritten_query || '',
+                shouldSearch: Boolean(event.should_search),
+                forced: Boolean(event.forced),
+                reason: event.reason || '',
+                pending: false,
+              },
+            },
+          });
+          return;
+        }
+
+        if (event.type === 'web_search_start') {
+          patchAssistantMessageSync((message) => ({
+            webSearch: {
+              ...(message.webSearch || {}),
               status: 'searching',
-              query: event.query || trimmed,
+              query: event.query || message.webSearch?.query || trimmed,
               count: 0,
               sources: [],
               message: '',
             },
-          });
+          }));
           return;
         }
 
         if (event.type === 'web_search_done') {
-          patchAssistantMessageSync({
+          patchAssistantMessageSync((message) => ({
             webSearch: {
+              ...(message.webSearch || {}),
               status: 'done',
-              query: event.query || trimmed,
+              query: event.query || message.webSearch?.query || trimmed,
               count: Number(event.count || 0),
               sources: Array.isArray(event.sources) ? event.sources : [],
               message: '',
             },
-          });
+          }));
           return;
         }
 
         if (event.type === 'web_search_error') {
-          patchAssistantMessageSync({
+          patchAssistantMessageSync((message) => ({
             webSearch: {
+              ...(message.webSearch || {}),
               status: 'error',
-              query: event.query || trimmed,
+              query: event.query || message.webSearch?.query || trimmed,
               count: 0,
               sources: [],
               message: event.message || '联网搜索失败',
             },
-          });
+          }));
           return;
         }
 
         if (event.type === 'content_delta') {
           patchAssistantMessage((message) => ({
             content: `${message.content || ''}${event.delta || ''}`,
+            responseStarted: true,
           }));
           return;
         }
@@ -1398,6 +1557,7 @@ export const AIChatProvider = ({ children }) => {
             reasoning: event.reasoning || '',
             reasoningComplete: true,
             streaming: false,
+            responseStarted: true,
             sendable: true,
             error: false,
             streamError: '',
@@ -1405,9 +1565,11 @@ export const AIChatProvider = ({ children }) => {
           setAISettings((prev) => ({
             ...prev,
             activeModel: event.model || prev.activeModel,
+            activeModelDisplayName: event.model_display_name || prev.activeModelDisplayName,
             activeSource: event.active_source || prev.activeSource,
+            systemModelKey: event.system_model_key || prev.systemModelKey,
             canUseAI: true,
-            selectedModel: prev.selectedModel || event.model || prev.activeModel,
+            selectedModel: prev.selectedModel || event.system_model_key || event.model || prev.activeModel,
           }));
           return;
         }
@@ -1421,6 +1583,7 @@ export const AIChatProvider = ({ children }) => {
               reasoning: message.reasoning || '',
               reasoningComplete: true,
               streaming: false,
+              responseStarted: true,
               sendable: false,
               error: true,
               streamError: hasOutput ? (event.message || 'Berry 暂时没能回复成功，请稍后再试。') : '',
@@ -1448,6 +1611,7 @@ export const AIChatProvider = ({ children }) => {
             reasoning: message.reasoning || '',
             reasoningComplete: Boolean(message.reasoning),
             streaming: false,
+            responseStarted: true,
             sendable: Boolean(message.content),
             error: false,
             streamError: '',
@@ -1464,6 +1628,7 @@ export const AIChatProvider = ({ children }) => {
           reasoning: message.reasoning || '',
           reasoningComplete: Boolean(message.reasoning),
           streaming: false,
+          responseStarted: true,
           sendable: false,
           error: true,
           streamError: hasOutput ? fallbackText : '',
@@ -1480,7 +1645,7 @@ export const AIChatProvider = ({ children }) => {
       }
       setIsSending(false);
     }
-  }, [chatContext, isSending]);
+  }, [chatContext, isOpen, isSending, startNewConversation]);
 
   const stopGeneration = useCallback(() => {
     activeStreamAbortRef.current?.abort();
@@ -1512,6 +1677,7 @@ export const AIChatProvider = ({ children }) => {
     sendMessage,
     stopGeneration,
     selectModel,
+    setSystemDefaultModel,
     openWithPrompt,
     loadChatSession,
     startNewConversation,
@@ -1544,6 +1710,7 @@ export const AIChatProvider = ({ children }) => {
     sendMessage,
     stopGeneration,
     selectModel,
+    setSystemDefaultModel,
     openWithPrompt,
     loadChatSession,
     startNewConversation,

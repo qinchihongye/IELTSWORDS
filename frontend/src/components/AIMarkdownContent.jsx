@@ -209,6 +209,31 @@ const splitSourceSection = (content = '') => {
   };
 };
 
+const buildFallbackSourcesMarkdown = (sources = []) => {
+  const normalizedSources = Array.isArray(sources)
+    ? sources
+        .map((source) => ({
+          title: String(source?.title || '').trim(),
+          url: String(source?.url || '').trim(),
+        }))
+        .filter((source) => source.title || source.url)
+    : [];
+
+  if (!normalizedSources.length) {
+    return '';
+  }
+
+  return normalizedSources
+    .map((source, index) => {
+      const label = source.title || `来源 ${index + 1}`;
+      if (source.url) {
+        return `${index + 1}. [${label}](${source.url})`;
+      }
+      return `${index + 1}. ${label}`;
+    })
+    .join('\n');
+};
+
 const toneVars = {
   default: {
     text: '#1f2937',
@@ -236,7 +261,7 @@ const toneVars = {
   },
 };
 
-const AIMarkdownContent = ({ content = '', tone = 'default', compact = false }) => {
+const AIMarkdownContent = ({ content = '', tone = 'default', compact = false, fallbackSources = [] }) => {
   const colorTone = toneVars[tone] ? tone : 'default';
 
   const html = useMemo(() => {
@@ -298,16 +323,17 @@ const AIMarkdownContent = ({ content = '', tone = 'default', compact = false }) 
       });
     };
 
+    const fallbackSourcesMarkdown = sources ? '' : buildFallbackSourcesMarkdown(fallbackSources);
     const renderMarkdown = (markdownText) => restoreMath(markdownText ? MARKDOWN.render(markdownText) : '');
     const bodyHtml = renderMarkdown(body);
-    const sourcesHtml = renderMarkdown(sources);
+    const sourcesHtml = renderMarkdown(sources || fallbackSourcesMarkdown);
 
     if (!sourcesHtml) {
       return bodyHtml;
     }
 
     return `${bodyHtml}<details class="ai-markdown__sources"><summary><span>来源</span></summary><div class="ai-markdown__sources-body">${sourcesHtml}</div></details>`;
-  }, [content]);
+  }, [content, fallbackSources]);
 
   if (!html) {
     return null;

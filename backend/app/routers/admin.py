@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .. import auth, crud, models, schemas
 from ..avatar_unlocks import (
     CHAPTER_COMPLETION_UNLOCK,
+    GROUP_COMPLETION_UNLOCK,
     load_avatar_unlock_rules,
     save_avatar_unlock_rules,
 )
@@ -285,16 +286,36 @@ def _get_avatar_admin_label(filename: str, metadata: dict[str, dict]) -> str:
     return str(item.get("avatars_name") or "").strip() or _get_label(filename)
 
 
+def build_available_unlock_groups(db: Session, chapters: list[dict]) -> list[dict]:
+    groups: list[dict] = []
+    for chapter in chapters:
+        chapter_no = str(chapter["chapterNo"])
+        chapter_name = str(chapter["chapterName"] or "")
+        for group in crud.get_groups_by_chapter(db, chapter_no, user_id=0, unlock_all=True):
+            groups.append({
+                "chapterNo": chapter_no,
+                "chapterName": chapter_name,
+                "groupId": str(group["groupId"]),
+                "groupTheme": str(group["groupTheme"] or ""),
+            })
+    return groups
+
+
 def build_avatar_unlock_rules_response(db: Session) -> dict:
     metadata = load_builtin_avatar_metadata()
     chapters = crud.get_all_chapters(db)
+    groups = build_available_unlock_groups(db, chapters)
     chapter_map = {
         str(chapter["chapterNo"]): str(chapter["chapterName"] or "")
         for chapter in chapters
     }
+    group_map = {
+        (str(group["chapterNo"]), str(group["groupId"])): str(group["groupTheme"] or "")
+        for group in groups
+    }
 
     configured_rules = load_avatar_unlock_rules()
-    configured_avatar_keys = {rule.avatar_key for rule in configured_rules}
+    configured_rule_map = {rule.avatar_key: rule for rule in configured_rules}
 
     rules = [
         {
@@ -305,6 +326,8 @@ def build_avatar_unlock_rules_response(db: Session) -> dict:
             "unlock_type": rule.unlock_type,
             "chapter_no": str(rule.chapter_no or ""),
             "chapter_name": chapter_map.get(str(rule.chapter_no or "")) or None,
+            "group_id": str(rule.group_id or "") or None,
+            "group_theme": group_map.get((str(rule.chapter_no or ""), str(rule.group_id or ""))) or None,
             "min_role": rule.min_role or None,
         }
         for rule in configured_rules
@@ -318,7 +341,7 @@ def build_avatar_unlock_rules_response(db: Session) -> dict:
             "vip_only": key in VIP_ONLY_BUILTIN_AVATAR_KEYS,
             "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{key}",
             "is_hardcoded": is_hardcoded_builtin_avatar(key),
-            "unlock_source": CHAPTER_COMPLETION_UNLOCK if key in configured_avatar_keys else None,
+            "unlock_source": configured_rule_map.get(key).unlock_type if key in configured_rule_map else None,
         }
         for key in get_all_builtin_avatar_keys()
     ]
@@ -327,6 +350,7 @@ def build_avatar_unlock_rules_response(db: Session) -> dict:
         "rules": rules,
         "available_avatars": available_avatars,
         "available_chapters": chapters,
+        "available_groups": groups,
     }
 
 
@@ -345,9 +369,15 @@ async def update_avatar_unlock_rules(
     current_user=Depends(require_super_admin),
 ):
     available_avatar_keys = set(get_all_builtin_avatar_keys())
+    chapters = crud.get_all_chapters(db)
     chapter_map = {
         str(chapter["chapterNo"]): str(chapter["chapterName"] or "")
-        for chapter in crud.get_all_chapters(db)
+        for chapter in chapters
+    }
+    available_groups = build_available_unlock_groups(db, chapters)
+    group_map = {
+        (str(group["chapterNo"]), str(group["groupId"])): str(group["groupTheme"] or "")
+        for group in available_groups
     }
 
     seen_avatar_keys: set[str] = set()
@@ -356,6 +386,7 @@ async def update_avatar_unlock_rules(
     for item in payload.rules:
         avatar_key = str(item.avatar_key or "").strip()
         chapter_no = str(item.chapter_no or "").strip()
+        group_id = str(item.group_id or "").strip()
 
         if not avatar_key or avatar_key not in available_avatar_keys:
             raise HTTPException(
@@ -370,23 +401,41 @@ async def update_avatar_unlock_rules(
             )
         seen_avatar_keys.add(avatar_key)
 
-        if item.unlock_type != CHAPTER_COMPLETION_UNLOCK:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="当前仅支持按章节完成解锁",
-            )
-
         if chapter_no not in chapter_map:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"章节 {chapter_no or '[空]'} 不存在",
             )
 
-        normalized_rule = {
-            "avatarKey": avatar_key,
-            "unlockType": CHAPTER_COMPLETION_UNLOCK,
-            "chapterNo": chapter_no,
-        }
+        if item.unlock_type == CHAPTER_COMPLETION_UNLOCK:
+            normalized_rule = {
+                "avatarKey": avatar_key,
+                "unlockType": CHAPTER_COMPLETION_UNLOCK,
+                "chapterNo": chapter_no,
+            }
+        elif item.unlock_type == GROUP_COMPLETION_UNLOCK:
+            if not group_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"头像 {avatar_key} 缺少 group 配置",
+                )
+            if (chapter_no, group_id) not in group_map:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"第 {chapter_no} 章的 {group_id} 不存在",
+                )
+            normalized_rule = {
+                "avatarKey": avatar_key,
+                "unlockType": GROUP_COMPLETION_UNLOCK,
+                "chapterNo": chapter_no,
+                "groupId": group_id,
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不支持的头像解锁类型",
+            )
+
         if item.min_role and item.min_role != "user":
             normalized_rule["minRole"] = item.min_role
         normalized_rules.append(normalized_rule)

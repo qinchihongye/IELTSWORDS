@@ -2,6 +2,7 @@
 Berry 相关 API
 """
 
+from datetime import datetime, timezone
 import json
 import re
 import socket
@@ -15,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..config import settings as app_settings
 from ..config.settings import (
     AI_REQUEST_TIMEOUT_SECONDS,
     BOCHA_SEARCH_API_KEY,
@@ -26,12 +28,16 @@ from ..config.settings import (
     OPENAI_API_KEY,
     OPENAI_AVAILABLE_MODELS,
     OPENAI_BASE_URL,
+    OPENAI_DEFAULT_SYSTEM_MODEL_KEY,
     OPENAI_MODEL,
     OPENAI_DISPLAY_MODEL_NAME,
     OPENAI_ENABLE_THINKING,
+    OPENAI_SYSTEM_MODELS,
+    get_system_ai_model,
+    set_default_system_model_key,
 )
 from ..database import get_db
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, has_min_role, require_admin
 from ..logging_config import get_logger
 
 router = APIRouter()
@@ -149,6 +155,36 @@ FOLLOW_UP_SEARCH_HINTS = (
     "错因",
 )
 
+FORCED_WEB_SEARCH_PATTERNS = (
+    re.compile(r"(?:请|帮我|麻烦|给我|直接|务必|必须|需要|可以|能否|想让你)?\s*(?:联网|网页|网上|上网)?\s*(?:搜索|搜一下|搜搜|检索|查一下|查一查|查查|查资料)", re.IGNORECASE),
+    re.compile(r"(?:please\s+search|web\s*search|search\s+for|look\s+up)", re.IGNORECASE),
+    re.compile(r"类似搜索", re.IGNORECASE),
+)
+NEGATED_WEB_SEARCH_PATTERNS = (
+    re.compile(r"(?:不要|不用|不必|无需)\s*(?:联网|网页|网上|上网)?\s*(?:搜索|搜一下|搜搜|检索|查一下|查一查|查查|查资料)", re.IGNORECASE),
+    re.compile(r"(?:do\s+not\s+search|don't\s+search|no\s+need\s+to\s+search)", re.IGNORECASE),
+)
+
+WEB_SEARCH_DECISION_SYSTEM_PROMPT = """你是 Berry 的联网搜索决策器。
+你的任务是针对当前这轮用户问题，同时完成两件事：
+1. 判断是否需要联网搜索
+2. 如果需要搜索，改写成适合搜索引擎检索的一条 query
+
+判断规则：
+- 用户明确要求你“请搜索”“帮我搜索”“联网搜索”“搜一下”“查一下”“类似搜索”“web search”“search for”等，必须判定为需要搜索。
+- 涉及实时信息、最新动态、新闻、榜单、价格、政策变化、发布日期、官网资料核验、外部网页事实查证时，通常需要搜索。
+- 单词释义、语法讲解、例句生成、写作润色、学习建议、闲聊问候，通常不需要搜索。
+- 如果仅靠当前上下文和常识就能高质量回答，应判定为不需要搜索。
+- 如果用户提到“今天”“明天”“最近”“本周”“本月”“今年”等相对时间，请严格以系统随后提供的“当前时间”信息为准。
+
+输出要求：
+- 只能输出严格 JSON，不要加代码块，不要加解释。
+- JSON 结构必须是：
+{"should_search": true, "rewritten_query": "用于搜索的 query", "reason": "一句很短的判断理由"}
+- `should_search` 必须是布尔值。
+- 当 `should_search` 为 false 时，`rewritten_query` 必须返回空字符串。
+- `reason` 控制在 18 个字以内。"""
+
 
 def get_latest_user_query(messages: list[dict]) -> str:
     for message in reversed(messages):
@@ -236,6 +272,181 @@ def build_web_search_query(messages: list[dict], context: dict | None = None) ->
         return truncate_search_text(f"{previous_topic} {latest_query}", 300)
 
     return ""
+
+
+def has_forced_web_search_intent(query: str) -> bool:
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return False
+
+    if any(pattern.search(normalized_query) for pattern in NEGATED_WEB_SEARCH_PATTERNS):
+        return False
+
+    return any(pattern.search(normalized_query) for pattern in FORCED_WEB_SEARCH_PATTERNS)
+
+
+def extract_first_json_object(text: str) -> dict[str, Any]:
+    raw_text = str(text or "").strip()
+    if not raw_text:
+        return {}
+
+    cleaned = raw_text.replace("```json", "").replace("```", "").strip()
+    try:
+        parsed = json.loads(cleaned)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        pass
+
+    match = re.search(r"\{[\s\S]*\}", cleaned)
+    if not match:
+        return {}
+
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def normalize_bool_like(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized_value = str(value or "").strip().lower()
+    return normalized_value in {"true", "1", "yes", "y", "是", "需要"}
+
+
+def build_current_datetime_context() -> str:
+    now_utc = datetime.now(timezone.utc)
+    local_now = now_utc.astimezone()
+    weekday_labels = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    weekday = weekday_labels[local_now.weekday()]
+    tz_name = local_now.tzname() or "本地时区"
+    offset_value = local_now.utcoffset() or timezone.utc.utcoffset(None)
+    total_minutes = int(offset_value.total_seconds() // 60) if offset_value else 0
+    offset_sign = "+" if total_minutes >= 0 else "-"
+    abs_minutes = abs(total_minutes)
+    offset_hours = abs_minutes // 60
+    offset_minutes = abs_minutes % 60
+    utc_offset = f"{offset_sign}{offset_hours:02d}:{offset_minutes:02d}"
+
+    return "\n".join([
+        f"当前本地时间：{local_now.strftime('%Y-%m-%d %H:%M:%S')}（{weekday}，{tz_name}，UTC{utc_offset}）",
+        f"当前 UTC 时间：{now_utc.strftime('%Y-%m-%d %H:%M:%S')}（UTC）",
+        "如果用户提到今天、明天、最近、本周、本月、今年等相对时间，请以上述当前时间为准。",
+    ])
+
+
+async def decide_web_search_plan(
+    messages: list[dict],
+    context: dict | None,
+    *,
+    base_url: str,
+    api_key: str,
+    model_name: str,
+    provider: str | None,
+    freshness: str | None = None,
+) -> dict[str, Any]:
+    latest_query = get_latest_user_query(messages)
+    normalized_latest_query = truncate_search_text(latest_query, 300)
+    heuristic_query = build_web_search_query(messages, context) or normalized_latest_query
+    forced_search = has_forced_web_search_intent(normalized_latest_query)
+    normalized_freshness = normalize_web_search_freshness(freshness)
+    current_datetime_context = build_current_datetime_context()
+
+    if not normalized_latest_query:
+        return {
+            "original_query": "",
+            "rewritten_query": "",
+            "should_search": False,
+            "forced": False,
+            "reason": "没有可搜索内容",
+            "freshness": normalized_freshness,
+        }
+
+    decision_lines = [
+        f"当前用户最后一条问题：{normalized_latest_query}",
+        f"命中强制搜索表达：{'是' if forced_search else '否'}",
+        f"候选搜索 query：{heuristic_query or '无'}",
+        f"搜索时间范围：{normalized_freshness}",
+    ]
+
+    if messages:
+        decision_lines.append("最近对话：")
+        for item in messages[-6:]:
+            role = item.get("role") or "user"
+            content = truncate_search_text(item.get("content"), 240)
+            if content:
+                decision_lines.append(f"- {role}: {content}")
+
+    context_message = build_context_message(context)
+    if context_message:
+        decision_lines.append("")
+        decision_lines.append("页面上下文：")
+        decision_lines.append(truncate_search_text(context_message, 1200))
+
+    reason = ""
+    should_search = False
+    rewritten_query = ""
+
+    try:
+        decision_answer, _ = await call_openai_compatible_api(
+            messages=[
+                {"role": "system", "content": WEB_SEARCH_DECISION_SYSTEM_PROMPT},
+                {"role": "system", "content": current_datetime_context},
+                {"role": "user", "content": "\n".join(decision_lines)},
+            ],
+            base_url=base_url,
+            api_key=api_key,
+            model_name=model_name,
+            temperature=0.1,
+            max_tokens=220,
+            enable_thinking=False,
+            provider=provider,
+        )
+        decision_payload = extract_first_json_object(decision_answer)
+        should_search = normalize_bool_like(
+            decision_payload.get("should_search")
+            or decision_payload.get("need_search")
+            or decision_payload.get("requires_search")
+        )
+        rewritten_query = truncate_search_text(
+            decision_payload.get("rewritten_query")
+            or decision_payload.get("query")
+            or decision_payload.get("search_query"),
+            300,
+        )
+        reason = truncate_search_text(decision_payload.get("reason"), 18)
+    except HTTPException as exc:
+        logger.warning("Search intent decision failed: %s", exc.detail)
+        reason = "意图识别失败"
+    except Exception as exc:
+        logger.warning("Unexpected search intent decision error: %s", exc)
+        reason = "意图识别失败"
+
+    if forced_search:
+        should_search = True
+        if not reason:
+            reason = "命中强制搜索指令"
+
+    if should_search and not rewritten_query:
+        rewritten_query = heuristic_query or normalized_latest_query
+    if not should_search:
+        rewritten_query = ""
+        if not reason:
+            reason = "当前问题可直接回答"
+    elif not reason:
+        reason = "需要外部信息支撑"
+
+    return {
+        "original_query": normalized_latest_query,
+        "rewritten_query": rewritten_query,
+        "should_search": should_search,
+        "forced": forced_search,
+        "reason": reason,
+        "freshness": normalized_freshness,
+    }
 
 
 def truncate_search_text(value: Any, max_length: int = 500) -> str:
@@ -504,8 +715,28 @@ def get_active_source(custom_config: schemas.AICustomConfig | None) -> str:
     return "system"
 
 
-def get_available_models() -> list[str]:
-    return OPENAI_AVAILABLE_MODELS or [OPENAI_MODEL]
+def build_available_model_options(current_user: models.User | None = None) -> list[dict[str, Any]]:
+    options = [
+        {
+            "key": item.key,
+            "model": item.model,
+            "display_name": item.display_name,
+            "provider": item.provider,
+            "source": "system",
+            "is_default": item.key == app_settings.OPENAI_DEFAULT_SYSTEM_MODEL_KEY,
+        }
+        for item in OPENAI_SYSTEM_MODELS
+    ]
+
+    if current_user and has_min_role(current_user, "admin"):
+        return options
+
+    active_key = app_settings.OPENAI_DEFAULT_SYSTEM_MODEL_KEY
+    return [item for item in options if item["key"] == active_key] or options[:1]
+
+
+def get_available_models(current_user: models.User | None = None) -> list[str]:
+    return [item["key"] for item in build_available_model_options(current_user)] or [app_settings.OPENAI_MODEL]
 
 
 def _extract_text_like(value: Any) -> str:
@@ -630,22 +861,31 @@ def ndjson_line(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False) + "\n"
 
 
-def build_settings_response() -> dict:
-    system_configured = bool(OPENAI_API_KEY)
+def build_settings_response(current_user: models.User | None = None) -> dict:
+    system_configured = bool(app_settings.OPENAI_API_KEY)
+    can_manage_system_model = bool(current_user and has_min_role(current_user, "admin"))
+    visible_model_options = build_available_model_options(current_user)
     
     return {
         "system_configured": system_configured,
         "can_use_ai": system_configured, # Frontend will evaluate custom config logic locally
         "active_source": "system",
-        "active_model": OPENAI_MODEL,
-        "active_model_display_name": OPENAI_DISPLAY_MODEL_NAME,
-        "available_models": get_available_models(),
-        "thinking_enabled": OPENAI_ENABLE_THINKING,
+        "active_model": app_settings.OPENAI_MODEL,
+        "active_model_display_name": app_settings.OPENAI_DISPLAY_MODEL_NAME,
+        "available_models": [item["key"] for item in visible_model_options],
+        "available_model_options": visible_model_options,
+        "active_system_model_key": app_settings.OPENAI_DEFAULT_SYSTEM_MODEL_KEY or None,
+        "default_system_model_key": app_settings.OPENAI_DEFAULT_SYSTEM_MODEL_KEY or None,
+        "can_manage_system_model": can_manage_system_model,
+        "thinking_enabled": app_settings.OPENAI_ENABLE_THINKING,
         "web_search_freshness": normalize_web_search_freshness(),
     }
 
 
-def resolve_active_ai_config(requested_model: str | None = None, custom_config: schemas.AICustomConfig | None = None) -> tuple[str, str, str]:
+def resolve_active_ai_config(
+    requested_model: str | None = None,
+    custom_config: schemas.AICustomConfig | None = None,
+) -> tuple[str, str, str, str | None, str | None, str | None]:
     requested_model_name = normalize_user_model(requested_model)
 
     if custom_config and custom_config.api_key:
@@ -656,17 +896,26 @@ def resolve_active_ai_config(requested_model: str | None = None, custom_config: 
         elif custom_config.provider == 'moonshot':
             base_url = "https://api.moonshot.cn/v1"
         else:
-            base_url = normalize_base_url(custom_config.base_url, require_public_https=True) or OPENAI_BASE_URL
-        model_name = requested_model_name or normalize_user_model(custom_config.model) or OPENAI_MODEL
-        return base_url, custom_config.api_key, model_name
+            base_url = normalize_base_url(custom_config.base_url, require_public_https=True) or app_settings.OPENAI_BASE_URL
+        model_name = requested_model_name or normalize_user_model(custom_config.model) or app_settings.OPENAI_MODEL
+        display_name = custom_config.model_display_name if hasattr(custom_config, "model_display_name") else None
+        return base_url, custom_config.api_key, model_name, None, custom_config.provider, display_name
 
-    if not OPENAI_API_KEY:
+    system_model = get_system_ai_model(requested_model_name)
+    if not system_model or not system_model.api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Berry 尚未配置系统默认密钥，且未提供自定义配置",
         )
 
-    return OPENAI_BASE_URL, OPENAI_API_KEY, requested_model_name or OPENAI_MODEL
+    return (
+        system_model.base_url,
+        system_model.api_key,
+        system_model.model,
+        system_model.key,
+        system_model.provider,
+        system_model.display_name,
+    )
 
 
 def merge_system_messages(messages: list[dict]) -> list[dict]:
@@ -946,7 +1195,31 @@ async def get_ai_settings(
     """
     获取系统默认 AI 配置
     """
-    return build_settings_response()
+    return build_settings_response(current_user)
+
+
+@router.patch("/settings/system-default-model", response_model=schemas.AISettingsResponse)
+async def update_system_default_model(
+    payload: schemas.AISettingsSystemModelUpdate,
+    current_user: models.User = Depends(require_admin),
+):
+    """
+    管理员设置系统默认模型
+    """
+    try:
+        set_default_system_model_key(payload.model_key)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"系统模型 {payload.model_key} 不存在",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return build_settings_response(current_user)
 
 
 @router.post("/settings/test", response_model=schemas.AISettingsTestResponse)
@@ -958,7 +1231,7 @@ async def test_ai_settings(
     测试传入的 AI 连接配置
     """
     input_api_key = normalize_api_key(payload.api_key)
-    api_key = input_api_key or OPENAI_API_KEY
+    api_key = input_api_key or app_settings.OPENAI_API_KEY
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -972,8 +1245,8 @@ async def test_ai_settings(
     elif payload.provider == 'moonshot':
         base_url = "https://api.moonshot.cn/v1"
     else:
-        base_url = normalize_base_url(payload.base_url, require_public_https=bool(payload.base_url)) or OPENAI_BASE_URL
-    model_name = normalize_user_model(payload.model) or OPENAI_MODEL
+        base_url = normalize_base_url(payload.base_url, require_public_https=bool(payload.base_url)) or app_settings.OPENAI_BASE_URL
+    model_name = normalize_user_model(payload.model) or app_settings.OPENAI_MODEL
     active_source = "custom" if input_api_key else "system"
 
     # For DeepSeek, explicitly disable thinking during test to avoid
@@ -1024,25 +1297,53 @@ async def stream_chat_with_ai(
         request_messages.append({"role": "system", "content": context_message})
     request_messages.extend(cleaned_messages)
 
-    base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
+    (
+        base_url,
+        api_key,
+        active_model,
+        active_system_model_key,
+        provider,
+        active_model_display_name,
+    ) = resolve_active_ai_config(payload.model, payload.custom_config)
     active_source = get_active_source(payload.custom_config)
-    provider = payload.custom_config.provider if payload.custom_config else None
     enable_thinking = payload.enable_thinking
     if enable_thinking is None and active_source == "system":
-        enable_thinking = OPENAI_ENABLE_THINKING
+        enable_thinking = app_settings.OPENAI_ENABLE_THINKING
 
     async def event_stream():
         yield ndjson_line({
             "type": "start",
             "model": active_model,
+            "model_display_name": active_model_display_name or active_model,
             "provider": "openai-compatible",
+            "provider_name": provider,
             "active_source": active_source,
+            "system_model_key": active_system_model_key,
         })
 
         try:
             if payload.enable_web_search:
-                search_query = build_web_search_query(cleaned_messages, payload.context)
-                if search_query:
+                search_plan = await decide_web_search_plan(
+                    cleaned_messages,
+                    payload.context,
+                    base_url=base_url,
+                    api_key=api_key,
+                    model_name=active_model,
+                    provider=provider,
+                    freshness=payload.web_search_freshness,
+                )
+                yield ndjson_line({
+                    "type": "web_search_intent",
+                    "query": search_plan["original_query"],
+                    "rewritten_query": search_plan["rewritten_query"],
+                    "should_search": search_plan["should_search"],
+                    "forced": search_plan["forced"],
+                    "reason": search_plan["reason"],
+                    "freshness": search_plan["freshness"],
+                })
+
+                if search_plan["should_search"] and search_plan["rewritten_query"]:
+                    search_query = search_plan["rewritten_query"]
                     yield ndjson_line({
                         "type": "web_search_start",
                         "query": search_query,
@@ -1062,7 +1363,7 @@ async def stream_chat_with_ai(
                                 -len(cleaned_messages) if cleaned_messages else len(request_messages),
                                 {
                                     "role": "system",
-                                    "content": f"联网搜索已开启，但没有检索到与“{search_query}”直接相关的结果。请基于已有上下文谨慎回答。",
+                                    "content": f"联网搜索已开启，且意图识别判定需要搜索，但没有检索到与“{search_query}”直接相关的结果。请基于已有上下文谨慎回答。",
                                 },
                             )
 
@@ -1075,7 +1376,7 @@ async def stream_chat_with_ai(
                                     "title": item.get("title", ""),
                                     "url": item.get("url", ""),
                                 }
-                                for item in web_search_results[:8]
+                                for item in web_search_results
                             ],
                         })
                     except HTTPException as exc:
@@ -1083,7 +1384,7 @@ async def stream_chat_with_ai(
                             -len(cleaned_messages) if cleaned_messages else len(request_messages),
                             {
                                 "role": "system",
-                                "content": f"联网搜索已开启，但搜索失败：{exc.detail}。请基于已有上下文回答，并说明未能完成联网检索。",
+                                "content": f"联网搜索已开启，且意图识别判定需要搜索，但搜索失败：{exc.detail}。请基于已有上下文回答，并说明未能完成联网检索。",
                             },
                         )
                         yield ndjson_line({
@@ -1102,16 +1403,22 @@ async def stream_chat_with_ai(
             ):
                 if event.get("type") == "done":
                     event["model"] = active_model
+                    event["model_display_name"] = active_model_display_name or active_model
                     event["provider"] = "openai-compatible"
+                    event["provider_name"] = provider
                     event["active_source"] = active_source
+                    event["system_model_key"] = active_system_model_key
                 yield ndjson_line(event)
         except HTTPException as exc:
             yield ndjson_line({
                 "type": "error",
                 "message": exc.detail,
                 "model": active_model,
+                "model_display_name": active_model_display_name or active_model,
                 "provider": "openai-compatible",
+                "provider_name": provider,
                 "active_source": active_source,
+                "system_model_key": active_system_model_key,
             })
         except Exception as exc:
             logger.exception("Unexpected streaming AI error: %s", exc)
@@ -1119,8 +1426,11 @@ async def stream_chat_with_ai(
                 "type": "error",
                 "message": "Berry 暂时没能回复成功，请稍后再试。",
                 "model": active_model,
+                "model_display_name": active_model_display_name or active_model,
                 "provider": "openai-compatible",
+                "provider_name": provider,
                 "active_source": active_source,
+                "system_model_key": active_system_model_key,
             })
 
     return StreamingResponse(
@@ -1147,27 +1457,50 @@ async def chat_with_ai(
         if message.role in {"system", "user", "assistant"}
     ]
 
+    (
+        base_url,
+        api_key,
+        active_model,
+        active_system_model_key,
+        provider,
+        active_model_display_name,
+    ) = resolve_active_ai_config(payload.model, payload.custom_config)
+    active_source = get_active_source(payload.custom_config)
+    enable_thinking = payload.enable_thinking
+    if enable_thinking is None and active_source == "system":
+        enable_thinking = app_settings.OPENAI_ENABLE_THINKING
+
     system_prompt = build_system_prompt(current_user, payload.context)
     context_message = build_context_message(payload.context)
-    web_search_message = await build_web_search_message_if_enabled(
-        payload.enable_web_search,
-        cleaned_messages,
-        payload.web_search_freshness,
-    )
-
     request_messages = [{"role": "system", "content": system_prompt}]
     if context_message:
         request_messages.append({"role": "system", "content": context_message})
-    if web_search_message:
-        request_messages.append({"role": "system", "content": web_search_message})
+
+    if payload.enable_web_search:
+        search_plan = await decide_web_search_plan(
+            cleaned_messages,
+            payload.context,
+            base_url=base_url,
+            api_key=api_key,
+            model_name=active_model,
+            provider=provider,
+            freshness=payload.web_search_freshness,
+        )
+        if search_plan["should_search"] and search_plan["rewritten_query"]:
+            web_search_results = await perform_web_search(search_plan["rewritten_query"], payload.web_search_freshness)
+            if web_search_results:
+                request_messages.append({
+                    "role": "system",
+                    "content": build_web_search_context_message(search_plan["rewritten_query"], web_search_results),
+                })
+            else:
+                request_messages.append({
+                    "role": "system",
+                    "content": f"联网搜索已开启，且意图识别判定需要搜索，但没有检索到与“{search_plan['rewritten_query']}”直接相关的结果。请基于已有上下文谨慎回答。",
+                })
+
     request_messages.extend(cleaned_messages)
 
-    base_url, api_key, active_model = resolve_active_ai_config(payload.model, payload.custom_config)
-    active_source = get_active_source(payload.custom_config)
-    provider = payload.custom_config.provider if payload.custom_config else None
-    enable_thinking = payload.enable_thinking
-    if enable_thinking is None and active_source == "system":
-        enable_thinking = OPENAI_ENABLE_THINKING
     answer, reasoning = await call_openai_compatible_api(
         messages=request_messages,
         base_url=base_url,
@@ -1181,6 +1514,9 @@ async def chat_with_ai(
         "answer": answer,
         "model": active_model,
         "provider": "openai-compatible",
+        "provider_name": provider,
+        "model_display_name": active_model_display_name or active_model,
+        "system_model_key": active_system_model_key,
         "reasoning": reasoning,
         "active_source": active_source,
     }

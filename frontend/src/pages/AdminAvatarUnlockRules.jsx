@@ -38,12 +38,23 @@ const ROLE_LIMIT_TAG_LABELS = {
   super_admin: '超管专属',
 };
 
+const UNLOCK_TYPE_OPTIONS = [
+  { value: 'chapter_completion', label: '章节解锁' },
+  { value: 'group_completion', label: 'Group 解锁' },
+];
+
+const UNLOCK_TYPE_TAG_LABELS = {
+  chapter_completion: '章节解锁',
+  group_completion: 'Group 解锁',
+};
+
 const AdminAvatarUnlockRules = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [availableAvatars, setAvailableAvatars] = useState([]);
   const [availableChapters, setAvailableChapters] = useState([]);
+  const [availableGroups, setAvailableGroups] = useState([]);
   const [availableVarietyFilter, setAvailableVarietyFilter] = useState();
 
   const watchedRulesRaw = Form.useWatch('rules', form);
@@ -73,6 +84,23 @@ const AdminAvatarUnlockRules = () => {
     [availableChapters],
   );
 
+  const groupByKey = useMemo(
+    () => new Map(availableGroups.map((item) => [`${item.chapterNo}::${item.groupId}`, item])),
+    [availableGroups],
+  );
+
+  const groupsByChapter = useMemo(() => {
+    const nextMap = new Map();
+    availableGroups.forEach((item) => {
+      const chapterNo = String(item.chapterNo);
+      if (!nextMap.has(chapterNo)) {
+        nextMap.set(chapterNo, []);
+      }
+      nextMap.get(chapterNo).push(item);
+    });
+    return nextMap;
+  }, [availableGroups]);
+
   const assignedAvatarKeys = useMemo(
     () => new Set((watchedRules || []).map((item) => item?.avatar_key).filter(Boolean)),
     [watchedRules],
@@ -80,14 +108,15 @@ const AdminAvatarUnlockRules = () => {
 
   const metrics = useMemo(() => {
     const configuredCount = watchedRules.length;
-    const configuredVipCount = watchedRules.filter((item) => avatarByKey.get(item?.avatar_key)?.vip_only).length;
+    const chapterRuleCount = watchedRules.filter((item) => item?.unlock_type !== 'group_completion').length;
+    const groupRuleCount = watchedRules.filter((item) => item?.unlock_type === 'group_completion').length;
     return {
       configuredCount,
-      chapterCoverage: `${configuredCount}/${availableChapters.length}`,
+      chapterRuleCount,
+      groupRuleCount,
       unconfiguredCount: Math.max(availableAvatars.length - configuredCount, 0),
-      configuredVipCount,
     };
-  }, [availableAvatars.length, availableChapters.length, avatarByKey, watchedRules]);
+  }, [availableAvatars.length, watchedRules]);
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
@@ -100,12 +129,15 @@ const AdminAvatarUnlockRules = () => {
       );
       const nextRules = (payload.rules || []).map((item) => ({
         avatar_key: item.avatar_key,
+        unlock_type: item.unlock_type || 'chapter_completion',
         chapter_no: item.chapter_no,
+        group_id: item.group_id || undefined,
         min_role: item.min_role || undefined,
         variety_filter: avatarVarietyMap.get(item.avatar_key) || undefined,
       }));
       setAvailableAvatars(nextAvailableAvatars);
       setAvailableChapters(payload.available_chapters || []);
+      setAvailableGroups(payload.available_groups || []);
       form.setFieldsValue({ rules: nextRules });
     } catch (error) {
       console.error('获取头像解锁规则失败:', error);
@@ -137,6 +169,13 @@ const AdminAvatarUnlockRules = () => {
     [availableChapters],
   );
 
+  const getGroupOptions = useCallback((chapterNo) => (
+    (groupsByChapter.get(String(chapterNo || '')) || []).map((item) => ({
+      value: String(item.groupId),
+      label: `${item.groupId} · ${item.groupTheme}`,
+    }))
+  ), [groupsByChapter]);
+
   const handleAddRule = useCallback(() => {
     const nextAvatar = availableAvatars.find((item) => !assignedAvatarKeys.has(item.key));
     const currentRules = form.getFieldValue('rules') || [];
@@ -145,7 +184,9 @@ const AdminAvatarUnlockRules = () => {
         ...currentRules,
         {
           avatar_key: nextAvatar?.key,
+          unlock_type: 'chapter_completion',
           chapter_no: undefined,
+          group_id: undefined,
           min_role: undefined,
           variety_filter: nextAvatar?.variety || undefined,
         },
@@ -179,15 +220,19 @@ const AdminAvatarUnlockRules = () => {
 
   const handleSave = useCallback(async () => {
     const rawRules = form.getFieldValue('rules') || [];
-    const normalizedRules = rawRules.map((item) => ({
-      avatar_key: String(item?.avatar_key || '').trim(),
-      chapter_no: String(item?.chapter_no || '').trim(),
-      min_role: item?.min_role || undefined,
-      unlock_type: 'chapter_completion',
-    }));
+    const normalizedRules = rawRules.map((item) => {
+      const unlockType = item?.unlock_type === 'group_completion' ? 'group_completion' : 'chapter_completion';
+      return {
+        avatar_key: String(item?.avatar_key || '').trim(),
+        unlock_type: unlockType,
+        chapter_no: String(item?.chapter_no || '').trim(),
+        group_id: unlockType === 'group_completion' ? String(item?.group_id || '').trim() : undefined,
+        min_role: item?.min_role || undefined,
+      };
+    });
 
-    if (normalizedRules.some((item) => !item.avatar_key || !item.chapter_no)) {
-      message.warning('请先补全所有头像和章节配置');
+    if (normalizedRules.some((item) => !item.avatar_key || !item.chapter_no || (item.unlock_type === 'group_completion' && !item.group_id))) {
+      message.warning('请先补全所有头像和解锁进度配置');
       return;
     }
 
@@ -222,7 +267,7 @@ const AdminAvatarUnlockRules = () => {
       <div className="avatar-unlock-rules-header">
         <div>
           <Title level={2} style={{ margin: 0 }}>头像解锁规则</Title>
-          <Text type="secondary">预览并编辑章节头像的解锁规则。当前这一期仅支持“完成章节后解锁”。</Text>
+          <Text type="secondary">预览并编辑头像的阶段规则，支持“完成章节解锁”与“完成指定 Group 解锁”。</Text>
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={fetchRules} loading={loading}>
@@ -245,8 +290,15 @@ const AdminAvatarUnlockRules = () => {
         <Card className="metric-card">
           <PictureOutlined />
           <div>
-            <Text type="secondary">章节覆盖</Text>
-            <Title level={3}>{metrics.chapterCoverage}</Title>
+            <Text type="secondary">章节规则</Text>
+            <Title level={3}>{metrics.chapterRuleCount}</Title>
+          </div>
+        </Card>
+        <Card className="metric-card">
+          <PictureOutlined />
+          <div>
+            <Text type="secondary">Group 规则</Text>
+            <Title level={3}>{metrics.groupRuleCount}</Title>
           </div>
         </Card>
         <Card className="metric-card">
@@ -256,13 +308,6 @@ const AdminAvatarUnlockRules = () => {
             <Title level={3}>{metrics.unconfiguredCount}</Title>
           </div>
         </Card>
-        <Card className="metric-card">
-          <PictureOutlined />
-          <div>
-            <Text type="secondary">当前规则中的 VIP 头像</Text>
-            <Title level={3}>{metrics.configuredVipCount}</Title>
-          </div>
-        </Card>
       </div>
 
       <div className="avatar-unlock-rules-grid">
@@ -270,7 +315,7 @@ const AdminAvatarUnlockRules = () => {
           <div className="panel-head">
             <div>
               <Title level={4}>规则编辑</Title>
-              <Text type="secondary">每条规则指定头像、章节和开放范围。</Text>
+              <Text type="secondary">每条规则指定头像、解锁方式和开放范围。</Text>
             </div>
             <Button icon={<PlusOutlined />} onClick={handleAddRule}>
               添加规则
@@ -334,17 +379,61 @@ const AdminAvatarUnlockRules = () => {
 
                           <Form.Item
                             {...field}
-                            label="解锁章节"
-                            name={[field.name, 'chapter_no']}
-                            rules={[{ required: true, message: '请选择章节' }]}
+                            label="解锁方式"
+                            name={[field.name, 'unlock_type']}
+                            rules={[{ required: true, message: '请选择解锁方式' }]}
                           >
                             <Select
-                              showSearch
-                              placeholder="选择章节"
-                              optionFilterProp="label"
-                              options={chapterSelectOptions}
+                              options={UNLOCK_TYPE_OPTIONS}
+                              onChange={(nextType) => {
+                                if (nextType !== 'group_completion') {
+                                  form.setFieldValue(['rules', field.name, 'group_id'], undefined);
+                                }
+                              }}
                             />
                           </Form.Item>
+
+                          <div className="rule-target-stack">
+                            <Form.Item
+                              {...field}
+                              label={currentRule?.unlock_type === 'group_completion' ? '所属章节' : '解锁章节'}
+                              name={[field.name, 'chapter_no']}
+                              rules={[{ required: true, message: '请选择章节' }]}
+                            >
+                              <Select
+                                showSearch
+                                placeholder="选择章节"
+                                optionFilterProp="label"
+                                options={chapterSelectOptions}
+                                onChange={(nextChapterNo) => {
+                                  if ((currentRule?.unlock_type || 'chapter_completion') !== 'group_completion') {
+                                    return;
+                                  }
+                                  const currentGroupId = form.getFieldValue(['rules', field.name, 'group_id']);
+                                  const hasMatchedGroup = getGroupOptions(nextChapterNo).some((option) => option.value === currentGroupId);
+                                  if (!hasMatchedGroup) {
+                                    form.setFieldValue(['rules', field.name, 'group_id'], undefined);
+                                  }
+                                }}
+                              />
+                            </Form.Item>
+
+                            {(currentRule?.unlock_type || 'chapter_completion') === 'group_completion' ? (
+                              <Form.Item
+                                {...field}
+                                label="解锁 Group"
+                                name={[field.name, 'group_id']}
+                                rules={[{ required: true, message: '请选择 Group' }]}
+                              >
+                                <Select
+                                  showSearch
+                                  placeholder="选择 Group"
+                                  optionFilterProp="label"
+                                  options={getGroupOptions(currentRule?.chapter_no)}
+                                />
+                              </Form.Item>
+                            ) : null}
+                          </div>
 
                           <Form.Item
                             {...field}
@@ -378,7 +467,7 @@ const AdminAvatarUnlockRules = () => {
             <div className="panel-head">
               <div>
                 <Title level={4}>当前规则预览</Title>
-                <Text type="secondary">方便快速核对头像和章节的对应关系。</Text>
+                <Text type="secondary">方便快速核对头像、章节和 Group 的对应关系。</Text>
               </div>
             </div>
             <div className="compact-rule-list">
@@ -387,6 +476,8 @@ const AdminAvatarUnlockRules = () => {
               ) : watchedRules.map((item, index) => {
                 const avatarItem = avatarByKey.get(item?.avatar_key);
                 const chapterItem = chapterByNo.get(String(item?.chapter_no || ''));
+                const groupItem = groupByKey.get(`${String(item?.chapter_no || '')}::${String(item?.group_id || '')}`);
+                const unlockType = item?.unlock_type || 'chapter_completion';
                 return (
                   <div className="compact-rule-item" key={`${item?.avatar_key || 'rule'}-${index}`}>
                     <div className="compact-rule-avatar">
@@ -400,6 +491,9 @@ const AdminAvatarUnlockRules = () => {
                       <div className="compact-rule-title">
                         <Text strong ellipsis>{avatarItem?.label || '未选择头像'}</Text>
                         {avatarItem?.vip_only ? <Tag color="gold">VIP</Tag> : null}
+                        <Tag color={unlockType === 'group_completion' ? 'purple' : 'blue'}>
+                          {UNLOCK_TYPE_TAG_LABELS[unlockType] || '章节解锁'}
+                        </Tag>
                         {item?.min_role ? (
                           <Tag color={ROLE_COLORS[item.min_role] || 'default'}>
                             {ROLE_LIMIT_TAG_LABELS[item.min_role] || ROLE_LABELS[item.min_role] || item.min_role}
@@ -409,9 +503,14 @@ const AdminAvatarUnlockRules = () => {
                       <Space wrap size={[6, 6]} className="compact-rule-meta">
                         {avatarItem?.variety ? <Tag>{avatarItem.variety}</Tag> : null}
                         {chapterItem ? <Tag color="blue">第 {chapterItem.chapterNo} 章</Tag> : <Tag>未选章节</Tag>}
+                        {unlockType === 'group_completion'
+                          ? (groupItem ? <Tag color="purple">{groupItem.groupId}</Tag> : <Tag color="purple">未选 Group</Tag>)
+                          : null}
                       </Space>
                       <Text type="secondary" className="compact-rule-chapter" ellipsis>
-                        {chapterItem?.chapterName || '请先选择章节'}
+                        {unlockType === 'group_completion'
+                          ? (groupItem?.groupTheme || '请先选择 Group')
+                          : (chapterItem?.chapterName || '请先选择章节')}
                       </Text>
                     </div>
                   </div>
@@ -424,7 +523,7 @@ const AdminAvatarUnlockRules = () => {
             <div className="panel-head">
               <div>
                 <Title level={4}>未纳入规则的头像</Title>
-                <Text type="secondary">这里只做预览，后续可以继续把它们加入章节解锁或其他阶段。</Text>
+                <Text type="secondary">这里只做预览，后续可以继续把它们加入章节解锁、Group 解锁或其他阶段。</Text>
               </div>
               <Select
                 allowClear
@@ -545,13 +644,18 @@ const css = `
 
 .rule-row-grid {
   display: grid;
-  grid-template-columns: minmax(160px, 0.8fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(180px, 0.8fr) auto;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(0, 1.2fr) minmax(140px, 0.7fr) minmax(220px, 1.1fr) minmax(160px, 0.8fr) auto;
   gap: 12px;
   align-items: end;
 }
 
 .rule-row-grid .ant-form-item {
   margin-bottom: 0;
+}
+
+.rule-target-stack {
+  display: grid;
+  gap: 12px;
 }
 
 .rule-row-action {

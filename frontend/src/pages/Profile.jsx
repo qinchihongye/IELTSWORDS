@@ -115,7 +115,7 @@ const Profile = () => {
     const vip = [];
     const chapter = [];
     avatarOptions.forEach((option) => {
-      if (option.unlockSource === 'chapter_completion') {
+      if (option.unlockSource === 'chapter_completion' || option.unlockSource === 'group_completion') {
         chapter.push(option);
       } else if (option.vipOnly) {
         vip.push(option);
@@ -737,7 +737,10 @@ const Profile = () => {
             <Form
               form={profileForm}
               layout="vertical"
-              onFinish={updateProfile}
+              onFinish={(values) => {
+                const { username, email } = values;
+                updateProfile({ username, email });
+              }}
             >
               <Form.Item label="用户名" name="username" rules={[{ required: true }, { min: 3 }]} style={{ marginBottom: '12px' }}>
                 <Input />
@@ -985,7 +988,7 @@ const Profile = () => {
             }}
           />
           <span style={{ color: '#6b7280', fontSize: 14 }}>
-            {previewAvatar?.label} {previewAvatar?.vipOnly ? '(VIP 专属)' : previewAvatar?.unlockSource === 'chapter_completion' ? '(章节解锁)' : ''} {previewAvatar?.isLocked ? '(尚未解锁)' : ''}
+            {previewAvatar?.label} {previewAvatar?.vipOnly ? '(VIP 专属)' : previewAvatar?.unlockSource === 'group_completion' ? '(Group 解锁)' : previewAvatar?.unlockSource === 'chapter_completion' ? '(章节解锁)' : ''} {previewAvatar?.isLocked ? '(尚未解锁)' : ''}
           </span>
         </div>
       </Modal>

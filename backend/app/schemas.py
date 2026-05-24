@@ -3,7 +3,7 @@ Pydantic schemas定义
 用于请求和响应的数据验证
 """
 
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, Field
 from typing import Any, Optional, List, Literal
 from datetime import datetime
 from .avatar_storage import DEFAULT_BUILTIN_AVATAR_KEY
@@ -12,6 +12,7 @@ from .avatar_storage import DEFAULT_BUILTIN_AVATAR_KEY
 
 UserRole = Literal['user', 'premium_user', 'admin', 'super_admin']
 AvatarType = Literal['builtin', 'upload']
+AvatarUnlockType = Literal['chapter_completion', 'group_completion']
 
 class UserBase(BaseModel):
     username: str
@@ -96,6 +97,15 @@ class CurrentUserAvatarCatalog(BaseModel):
     next_unlock_condition: Optional[str] = None
     unlocked_normal_count: Optional[int] = None
     total_normal_count: Optional[int] = None
+
+
+class AvatarUnlockNoticeItem(BaseModel):
+    key: str
+    label: str
+    variety: str
+    vip_only: bool = False
+    url: str
+    unlock_source: Optional[str] = None
 
 class UserRoleUpdate(BaseModel):
     role: UserRole
@@ -191,16 +201,19 @@ class AdminAvatarUnlockRuleItem(BaseModel):
     avatar_label: str
     variety: str
     vip_only: bool = False
-    unlock_type: Literal['chapter_completion'] = 'chapter_completion'
+    unlock_type: AvatarUnlockType = 'chapter_completion'
     chapter_no: str
     chapter_name: Optional[str] = None
+    group_id: Optional[str] = None
+    group_theme: Optional[str] = None
     min_role: Optional[UserRole] = None
 
 
 class AdminAvatarUnlockRuleUpdateItem(BaseModel):
     avatar_key: str
-    unlock_type: Literal['chapter_completion'] = 'chapter_completion'
+    unlock_type: AvatarUnlockType = 'chapter_completion'
     chapter_no: str
+    group_id: Optional[str] = None
     min_role: Optional[UserRole] = None
 
 
@@ -208,10 +221,18 @@ class AdminAvatarUnlockRulesUpdate(BaseModel):
     rules: List[AdminAvatarUnlockRuleUpdateItem]
 
 
+class AdminAvatarUnlockAvailableGroup(BaseModel):
+    chapterNo: str
+    chapterName: str
+    groupId: str
+    groupTheme: str
+
+
 class AdminAvatarUnlockRulesResponse(BaseModel):
     rules: List[AdminAvatarUnlockRuleItem]
     available_avatars: List[BuiltinAvatarOption]
     available_chapters: List[ChapterInfo]
+    available_groups: List[AdminAvatarUnlockAvailableGroup]
 
 # ============ 图片相关 ============
 
@@ -247,6 +268,10 @@ class Progress(ProgressBase):
 
     class Config:
         from_attributes = True
+
+
+class ProgressUpdateResponse(Progress):
+    newly_unlocked_avatars: List[AvatarUnlockNoticeItem] = Field(default_factory=list)
 
 class ProgressWithWord(BaseModel):
     word_id: int
@@ -541,9 +566,14 @@ class AIChatRequest(BaseModel):
 
 
 class AIChatResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     answer: str
     model: str
     provider: str
+    provider_name: Optional[str] = None
+    model_display_name: Optional[str] = None
+    system_model_key: Optional[str] = None
     reasoning: Optional[str] = None
     active_source: Literal['system', 'custom'] = 'system'
 
@@ -694,6 +724,31 @@ class AISettingsTestResponse(BaseModel):
     active_source: Literal['system', 'custom']
 
 
+class AISettingsSystemModelUpdate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_key: str
+
+    @field_validator('model_key')
+    @classmethod
+    def validate_model_key(cls, v):
+        value = str(v or '').strip()
+        if not value:
+            raise ValueError('系统模型 key 不能为空')
+        if len(value) > 120:
+            raise ValueError('系统模型 key 过长')
+        return value
+
+
+class AIAvailableModelOption(BaseModel):
+    key: str
+    model: str
+    display_name: str
+    provider: str
+    source: Literal['system'] = 'system'
+    is_default: bool = False
+
+
 class AISettingsResponse(BaseModel):
     system_configured: bool
     can_use_ai: bool
@@ -701,4 +756,9 @@ class AISettingsResponse(BaseModel):
     active_model: str
     active_model_display_name: str
     available_models: List[str]
+    available_model_options: List[AIAvailableModelOption] = []
+    active_system_model_key: Optional[str] = None
+    default_system_model_key: Optional[str] = None
+    can_manage_system_model: bool = False
     thinking_enabled: Optional[bool] = None
+    web_search_freshness: Optional[str] = None

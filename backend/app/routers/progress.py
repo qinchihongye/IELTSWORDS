@@ -9,6 +9,7 @@ from typing import List, Optional
 import csv
 import io
 from .. import schemas, crud
+from ..avatar_unlocks import build_unlocked_avatar_snapshot
 from ..database import get_db
 from ..dependencies import get_current_user, has_min_role
 from .. import models
@@ -105,7 +106,7 @@ async def get_word_progress(
     ensure_word_accessible(db, word, current_user)
     return progress
 
-@router.post("/word/{word_id}", response_model=schemas.Progress)
+@router.post("/word/{word_id}", response_model=schemas.ProgressUpdateResponse)
 async def update_word_progress(
     word_id: int,
     progress_update: schemas.ProgressUpdate,
@@ -124,11 +125,24 @@ async def update_word_progress(
         )
     ensure_word_accessible(db, word, current_user)
 
+    unlocked_before = {
+        item["key"]: item for item in build_unlocked_avatar_snapshot(db, current_user)
+    }
+
     # 更新进度
     progress = crud.update_word_progress(
         db, current_user.id, word_id, progress_update.status, progress_update.quality
     )
-    return progress
+    refreshed_user = db.query(models.User).filter(models.User.id == current_user.id).first() or current_user
+    unlocked_after = build_unlocked_avatar_snapshot(db, refreshed_user)
+    newly_unlocked_avatars = [
+        item for item in unlocked_after
+        if item["key"] not in unlocked_before
+    ]
+
+    response_payload = schemas.ProgressUpdateResponse.model_validate(progress).model_dump()
+    response_payload["newly_unlocked_avatars"] = newly_unlocked_avatars
+    return response_payload
 
 @router.get("/words", response_model=List[schemas.ProgressWithWord])
 async def get_all_progress(

@@ -65,7 +65,8 @@
   },
   "几何.png": {
     "variety": "秋海棠",
-    "avatars_name": "几何"
+    "avatars_name": "几何",
+    "source_mtime": 1779324264.0342772
   },
   "超新星.png": {
     "variety": "秋海棠",
@@ -137,7 +138,8 @@
   },
   "月见樱.png": {
     "variety": "秋海棠",
-    "avatars_name": "月见樱"
+    "avatars_name": "月见樱",
+    "source_mtime": 1779152079.211742
   },
   "辛巴达.png": {
     "variety": "秋海棠",
@@ -177,7 +179,8 @@
   },
   "花舞霓裳.png": {
     "variety": "其他",
-    "avatars_name": "花舞霓裳"
+    "avatars_name": "花舞霓裳",
+    "source_mtime": 1778943629.8591278
   },
   "奶油龙沙宝石.png": {
     "variety": "其他",
@@ -193,7 +196,8 @@
   },
   "婉尼拉.png": {
     "variety": "其他",
-    "avatars_name": "婉尼拉"
+    "avatars_name": "婉尼拉",
+    "source_mtime": 1779007827.7896862
   },
   "垂丝茉莉.png": {
     "variety": "其他",
@@ -213,7 +217,8 @@
   },
   "木村.png": {
     "variety": "角堇",
-    "avatars_name": "木村"
+    "avatars_name": "木村",
+    "source_mtime": 1779366924.981571
   },
   "青之幻想.png": {
     "variety": "角堇",
@@ -237,7 +242,8 @@
   },
   "恋物语.png": {
     "variety": "绣球",
-    "avatars_name": "恋物语"
+    "avatars_name": "恋物语",
+    "source_mtime": 1778946024.4786592
   },
   "无尽夏新娘.png": {
     "variety": "绣球",
@@ -250,7 +256,8 @@
   },
   "石灰灯.png": {
     "variety": "绣球",
-    "avatars_name": "石灰灯"
+    "avatars_name": "石灰灯",
+    "source_mtime": 1778944560.9327898
   },
   "纱织小姐.png": {
     "variety": "绣球",
@@ -290,11 +297,13 @@
   },
   "无尽夏.png": {
     "variety": "绣球",
-    "avatars_name": "无尽夏"
+    "avatars_name": "无尽夏",
+    "source_mtime": 1778945516.4404643
   },
   "香草草莓.png": {
     "variety": "绣球",
-    "avatars_name": "香草草莓"
+    "avatars_name": "香草草莓",
+    "source_mtime": 1778944879.7659738
   },
   "辉夜姬.png": {
     "variety": "绣球",
@@ -350,7 +359,8 @@
   },
   "大理石皇后.png": {
     "variety": "蔓绿绒",
-    "avatars_name": "大理石皇后"
+    "avatars_name": "大理石皇后",
+    "source_mtime": 1779151836.3759694
   },
   "南美荧光.png": {
     "variety": "蔓绿绒",
@@ -366,7 +376,8 @@
   },
   "柠檬汁.png": {
     "variety": "蔓绿绒",
-    "avatars_name": "柠檬汁"
+    "avatars_name": "柠檬汁",
+    "source_mtime": 1779152068.4507544
   },
   "瓦萨维斯.png": {
     "variety": "蔓绿绒",
@@ -394,7 +405,8 @@
   },
   "雪后.png": {
     "variety": "鹿角蕨",
-    "avatars_name": "雪后"
+    "avatars_name": "雪后",
+    "source_mtime": 1779075686.5512598
   },
   "白二岐.png": {
     "variety": "鹿角蕨",
@@ -438,7 +450,8 @@
   },
   "幻想曲.png": {
     "variety": "彩叶芋",
-    "avatars_name": "幻想曲"
+    "avatars_name": "幻想曲",
+    "source_mtime": 1779075421.4019973
   },
   "玛菲特小姐.png": {
     "variety": "彩叶芋",
@@ -534,7 +547,8 @@
   },
   "维塔.png": {
     "variety": "花烛",
-    "avatars_name": "维塔"
+    "avatars_name": "维塔",
+    "source_mtime": 1779324198.348068
   },
   "KOS.png": {
     "variety": "花烛",

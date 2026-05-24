@@ -6,10 +6,13 @@ import { useAuth } from '../context/AuthContext';
 import AIMarkdownContent from './AIMarkdownContent';
 import UserAvatar from './UserAvatar';
 import { getAvatarSrc } from '../utils/avatars';
+import deepseekProviderIcon from '../assets/provider-icons/deepseek.png';
+import siliconflowProviderIcon from '../assets/provider-icons/siliconflow.png';
+import moonshotProviderIcon from '../assets/provider-icons/moonshot.png';
 
 const { Text, Title } = Typography;
 
-const MODEL_PROVIDER_ORDER = ['OpenAI', 'DeepSeek', 'Anthropic (Claude)', 'Kimi', 'Other models'];
+const MODEL_PROVIDER_ORDER = ['SiliconFlow', 'DeepSeek', 'OpenAI', 'Anthropic (Claude)', 'Kimi', 'Other models'];
 const AI_DRAWER_WIDTH_KEY = 'ieltswords_ai_drawer_width';
 const AI_WEB_SEARCH_AUTO_EXPAND_KEY = 'ieltswords_ai_web_search_auto_expand';
 const AI_DRAWER_DEFAULT_WIDTH = 420;
@@ -34,7 +37,13 @@ const clampDrawerWidth = (width, viewportWidth) => {
   return Math.min(Math.max(width, minWidth), maxWidth);
 };
 
-const getModelProvider = (model) => {
+const getModelProvider = (model, provider) => {
+  const explicitProvider = String(provider || '').trim().toLowerCase();
+  if (explicitProvider === 'siliconflow') return 'SiliconFlow';
+  if (explicitProvider === 'deepseek') return 'DeepSeek';
+  if (explicitProvider === 'moonshot') return 'Kimi';
+  if (explicitProvider === 'openai') return 'OpenAI';
+
   const value = String(model || '').toLowerCase();
   if (value.includes('deepseek')) return 'DeepSeek';
   if (value.includes('claude') || value.includes('anthropic')) return 'Anthropic (Claude)';
@@ -43,10 +52,76 @@ const getModelProvider = (model) => {
   return 'Other models';
 };
 
-const buildModelLabel = (model) => (
+const MODEL_PROVIDER_ICONS = {
+  SiliconFlow: siliconflowProviderIcon,
+  DeepSeek: deepseekProviderIcon,
+  Kimi: moonshotProviderIcon,
+  Moonshot: moonshotProviderIcon,
+};
+
+const MODEL_PROVIDER_LABEL_ALIASES = {
+  SiliconFlow: ['SiliconFlow', 'Silicon Flow'],
+  DeepSeek: ['DeepSeek', 'Deep Seek'],
+  Kimi: ['Kimi', 'Moonshot', 'MoonShot'],
+  Moonshot: ['Moonshot', 'MoonShot', 'Kimi'],
+};
+
+const sanitizeModelLabel = (model, provider) => {
+  const label = String(model || '').trim();
+  if (!label) {
+    return '';
+  }
+
+  const aliases = MODEL_PROVIDER_LABEL_ALIASES[provider] || [provider];
+  const escapedAliases = aliases
+    .filter(Boolean)
+    .map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+  if (!escapedAliases.length) {
+    return label;
+  }
+
+  const suffixPattern = new RegExp(`\\s*\\((?:${escapedAliases.join('|')})\\)\\s*$`, 'i');
+  return label.replace(suffixPattern, '').trim();
+};
+
+const ProviderModelIcon = ({ provider }) => {
+  const iconSrc = MODEL_PROVIDER_ICONS[provider];
+
+  if (!iconSrc) {
+    return <ThunderboltFilled style={{ color: '#b590e8', fontSize: 13, flex: 'none' }} />;
+  }
+
+  return (
+    <span
+      style={{
+        width: 14,
+        height: 14,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 'none',
+      }}
+    >
+      <img
+        src={iconSrc}
+        alt=""
+        aria-hidden="true"
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          display: 'block',
+        }}
+      />
+    </span>
+  );
+};
+
+const buildModelLabel = (model, provider) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-    <ThunderboltFilled style={{ color: '#b590e8', fontSize: 13 }} />
-    <span>{model}</span>
+    <ProviderModelIcon provider={provider} />
+    <span>{sanitizeModelLabel(model, provider)}</span>
   </span>
 );
 
@@ -56,27 +131,22 @@ const extractModelDisplayName = (model) => {
   return parts[parts.length - 1];
 };
 
-const groupModels = (models, activeModel, activeModelDisplayName, systemModel, systemModelDisplayName) => {
+const groupModels = (models) => {
   const groups = new Map();
 
-  models.forEach((model) => {
-    const provider = getModelProvider(model);
+  models.forEach((modelOption) => {
+    const provider = getModelProvider(modelOption?.model, modelOption?.provider);
     if (!groups.has(provider)) {
       groups.set(provider, []);
     }
 
-    let labelText = extractModelDisplayName(model);
-    if (model === systemModel && systemModelDisplayName) {
-      labelText = systemModelDisplayName;
-    } else if (model === activeModel && activeModelDisplayName) {
-      labelText = activeModelDisplayName;
-    }
-      
-    const label = buildModelLabel(labelText);
-      
+    const labelText = modelOption?.displayName
+      || extractModelDisplayName(modelOption?.model || modelOption?.key);
+    const label = buildModelLabel(labelText, provider);
+
     groups.get(provider).push({
       label,
-      value: model,
+      value: modelOption?.key,
     });
   });
 
@@ -465,6 +535,7 @@ const AIChatWidget = () => {
     sendMessage,
     stopGeneration,
     selectModel,
+    setSystemDefaultModel,
     loadChatSession,
     startNewConversation,
     updateChatSessionTitle,
@@ -497,6 +568,7 @@ const AIChatWidget = () => {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [expandedReasoningIds, setExpandedReasoningIds] = useState(() => new Set());
+  const [expandedIntentIds, setExpandedIntentIds] = useState(() => new Set());
   const [expandedWebSearchIds, setExpandedWebSearchIds] = useState(() => new Set());
   const [autoExpandWebSearch, setAutoExpandWebSearch] = useState(() => {
     if (typeof window === 'undefined') {
@@ -598,36 +670,72 @@ const AIChatWidget = () => {
     () => chatContext?.shortcuts || [],
     [chatContext]
   );
-  const modelCount = (aiSettings.availableModels || []).length + (aiSettings.customConfigs || []).length;
+  const modelCount = (aiSettings.availableModelOptions || []).length + (aiSettings.customConfigs || []).length;
   const modelOptions = useMemo(() => {
-    const systemModels = (aiSettings.availableModels || []);
-    const options = groupModels(
-      systemModels,
-      aiSettings.activeModel,
-      aiSettings.activeModelDisplayName,
-      aiSettings.systemModel,
-      aiSettings.systemModelDisplayName
-    );
+    const systemModels = (aiSettings.availableModelOptions || []);
+    const options = groupModels(systemModels);
     
     if (aiSettings.customConfigs && aiSettings.customConfigs.length > 0) {
       options.unshift({
         label: '我的自定义模型',
         options: aiSettings.customConfigs.map(cfg => ({
-          label: buildModelLabel(cfg.modelDisplayName || cfg.model),
+          label: buildModelLabel(
+            cfg.modelDisplayName || cfg.model,
+            getModelProvider(cfg.model, cfg.provider),
+          ),
           value: cfg.id,
         })),
       });
     }
     return options;
   }, [
-    aiSettings.availableModels,
-    aiSettings.activeModel,
-    aiSettings.activeModelDisplayName,
+    aiSettings.availableModelOptions,
     aiSettings.customConfigs,
-    aiSettings.systemModel,
-    aiSettings.systemModelDisplayName,
   ]);
   const selectedModel = aiSettings.selectedModel || aiSettings.activeModel || '';
+  const handleModelChange = useCallback(async (nextValue) => {
+    const normalizedValue = String(nextValue || '').trim();
+    if (!normalizedValue) {
+      return;
+    }
+
+    const isCustomConfig = (aiSettings.customConfigs || []).some((cfg) => cfg.id === normalizedValue);
+    if (isCustomConfig) {
+      selectModel(normalizedValue);
+      return;
+    }
+
+    const isSystemModel = (aiSettings.availableModelOptions || []).some((option) => option.key === normalizedValue);
+    if (!isSystemModel) {
+      selectModel(normalizedValue);
+      return;
+    }
+
+    if (!aiSettings.canManageSystemModel) {
+      selectModel(normalizedValue);
+      return;
+    }
+
+    if (normalizedValue === (aiSettings.defaultSystemModelKey || '')) {
+      selectModel(normalizedValue);
+      return;
+    }
+
+    try {
+      await setSystemDefaultModel(normalizedValue);
+      message.success('系统默认模型已更新');
+    } catch (error) {
+      console.error('切换系统默认模型失败:', error);
+      message.error(error?.response?.data?.detail || '切换系统默认模型失败');
+    }
+  }, [
+    aiSettings.availableModelOptions,
+    aiSettings.canManageSystemModel,
+    aiSettings.customConfigs,
+    aiSettings.defaultSystemModelKey,
+    selectModel,
+    setSystemDefaultModel,
+  ]);
   const shouldShowModelBox = Boolean(selectedModel) || modelOptions.length > 0;
   const shouldShowControlRow = shouldShowModelBox || canUseAI;
   const selectedWebSearchFreshness = aiSettings.webSearchFreshness || 'noLimit';
@@ -1001,6 +1109,18 @@ const AIChatWidget = () => {
     });
   };
 
+  const toggleIntentPanel = (messageId) => {
+    setExpandedIntentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
   const toggleWebSearchSources = (messageId) => {
     setExpandedWebSearchIds((prev) => {
       if (prev.has(messageId)) {
@@ -1180,7 +1300,7 @@ const AIChatWidget = () => {
       >
         <FloatButton
           icon={<MessageOutlined style={{ color: '#ffffff' }} />}
-          tooltip="Berry (可拖动)"
+          tooltip="Berry"
           onClick={handleButtonClick}
           style={{ 
             position: 'relative', 
@@ -1748,6 +1868,23 @@ const AIChatWidget = () => {
                 const isReasoningExpanded = hasReasoning && (!message.reasoningComplete || expandedReasoningIds.has(message.id));
                 const webSearchState = message.webSearch;
                 const hasWebSearch = !isUser && Boolean(webSearchState);
+                const webSearchIntent = webSearchState?.intent || null;
+                const hasWebSearchIntent = !isUser && Boolean(webSearchIntent);
+                const isWebSearchIntentPending = hasWebSearch && Boolean(webSearchIntent?.pending || webSearchState?.status === 'intent_pending');
+                const hasIntentDecision = hasWebSearchIntent && !isWebSearchIntentPending && typeof webSearchIntent?.shouldSearch === 'boolean';
+                const canToggleIntentPanel = hasIntentDecision;
+                const isIntentExpanded = canToggleIntentPanel && expandedIntentIds.has(message.id);
+                const intentDisplayQuery = hasWebSearch
+                  ? (webSearchIntent?.rewrittenQuery || webSearchIntent?.originalQuery || webSearchState?.query || '')
+                  : '';
+                const intentPayload = hasIntentDecision
+                  ? {
+                      should_search: Boolean(webSearchIntent.shouldSearch),
+                      rewritten_query: webSearchIntent.rewrittenQuery || '',
+                      reason: webSearchIntent.reason || '',
+                    }
+                  : null;
+                const shouldRenderWebSearchStatus = hasWebSearch && hasIntentDecision && webSearchIntent.shouldSearch;
                 const isWebSearchExpanded = expandedWebSearchIds.has(message.id);
                 const searchSources = Array.isArray(webSearchState?.sources) ? webSearchState.sources : [];
                 const canOpenSearchSources = Boolean(webSearchState);
@@ -1832,80 +1969,193 @@ const AIChatWidget = () => {
                                 maxWidth: '100%',
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#64748b', fontSize: 12, fontWeight: 700, minWidth: 0 }}>
-                                <GlobalOutlined style={{ color: '#8a63d2', fontSize: 14, flex: 'none' }} />
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  Bocha Searching: {webSearchState.query || '当前问题'}
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (canOpenSearchSources) {
-                                    toggleWebSearchSources(message.id);
-                                  }
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 10,
-                                  width: '100%',
-                                  minWidth: 0,
-                                  boxSizing: 'border-box',
-                                  border: '1px solid rgba(148, 163, 184, 0.14)',
-                                  borderRadius: 16,
-                                  padding: '10px 12px',
-                                  background: webSearchState.status === 'error'
-                                    ? 'rgba(254, 242, 242, 0.86)'
-                                    : 'rgba(15, 23, 42, 0.04)',
-                                  color: '#1f2937',
-                                  cursor: canOpenSearchSources ? 'pointer' : 'default',
-                                  textAlign: 'left',
-                                }}
-                              >
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                  <span style={{ fontSize: 14, fontWeight: 800, color: webSearchState.status === 'error' ? '#b91c1c' : '#1f2937' }}>
-                                    {webSearchState.status === 'searching'
-                                      ? '正在搜索网络来源'
-                                      : webSearchState.status === 'error'
-                                        ? '联网搜索未完成'
-                                        : `基于 ${webSearchState.count || 0} 个搜索来源`}
-                                  </span>
-                                  {searchSources.length > 0 && (
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 2, flex: 'none' }}>
-                                      {searchSources.slice(0, 5).map((source, sourceIndex) => (
+                              {hasWebSearchIntent && (
+                                <>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#64748b', fontSize: 12, fontWeight: 700, minWidth: 0 }}>
+                                    <LinkOutlined style={{ color: '#8a63d2', fontSize: 14, flex: 'none' }} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      意图识别
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (canToggleIntentPanel) {
+                                        toggleIntentPanel(message.id);
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 10,
+                                      width: '100%',
+                                      minWidth: 0,
+                                      boxSizing: 'border-box',
+                                      border: '1px solid rgba(138, 99, 210, 0.12)',
+                                      borderRadius: 16,
+                                      padding: '10px 12px',
+                                      background: 'rgba(250, 245, 255, 0.78)',
+                                      color: '#1f2937',
+                                      cursor: canToggleIntentPanel ? 'pointer' : 'default',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                      <span
+                                        style={{
+                                          fontSize: 14,
+                                          fontWeight: 800,
+                                          color: '#1f2937',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {intentDisplayQuery || (isWebSearchIntentPending ? '正在分析当前问题' : '未生成 Query')}
+                                      </span>
+                                    </span>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 'none' }}>
+                                      <span
+                                        style={{
+                                          padding: '3px 9px',
+                                          borderRadius: 999,
+                                          background: isWebSearchIntentPending
+                                            ? 'rgba(138, 99, 210, 0.12)'
+                                            : webSearchIntent.shouldSearch
+                                              ? 'rgba(16, 185, 129, 0.14)'
+                                              : 'rgba(148, 163, 184, 0.14)',
+                                          color: isWebSearchIntentPending
+                                            ? '#8a63d2'
+                                            : webSearchIntent.shouldSearch ? '#0f766e' : '#64748b',
+                                          fontSize: 11,
+                                          fontWeight: 800,
+                                          lineHeight: 1.4,
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        {isWebSearchIntentPending
+                                          ? '意图识别中'
+                                          : (webSearchIntent.shouldSearch ? '需要搜索' : '无需搜索')}
+                                      </span>
+                                      {canToggleIntentPanel && (
+                                        isIntentExpanded
+                                          ? <DownOutlined style={{ fontSize: 11, color: '#8a63d2', flex: 'none' }} />
+                                          : <RightOutlined style={{ fontSize: 11, color: '#8a63d2', flex: 'none' }} />
+                                      )}
+                                    </span>
+                                  </button>
+                                  {isIntentExpanded && intentPayload && (
+                                    <pre
+                                      style={{
+                                        margin: 0,
+                                        minWidth: 0,
+                                        maxWidth: '100%',
+                                        overflowX: 'auto',
+                                        borderRadius: 12,
+                                        padding: '10px 11px',
+                                        background: 'rgba(255, 255, 255, 0.88)',
+                                        border: '1px solid rgba(226, 232, 240, 0.82)',
+                                        color: '#334155',
+                                        fontSize: 11,
+                                        lineHeight: 1.55,
+                                        whiteSpace: 'pre-wrap',
+                                        overflowWrap: 'anywhere',
+                                        wordBreak: 'break-word',
+                                        fontFamily: 'ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
+                                      }}
+                                    >
+                                      {JSON.stringify(intentPayload, null, 2)}
+                                    </pre>
+                                  )}
+                                </>
+                              )}
+
+                              {shouldRenderWebSearchStatus && (
+                                <>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#64748b', fontSize: 12, fontWeight: 700, minWidth: 0 }}>
+                                    <GlobalOutlined style={{ color: '#8a63d2', fontSize: 14, flex: 'none' }} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      Bocha Searching
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (canOpenSearchSources) {
+                                        toggleWebSearchSources(message.id);
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 10,
+                                      width: '100%',
+                                      minWidth: 0,
+                                      boxSizing: 'border-box',
+                                      border: '1px solid rgba(148, 163, 184, 0.14)',
+                                      borderRadius: 16,
+                                      padding: '10px 12px',
+                                      background: webSearchState.status === 'error'
+                                        ? 'rgba(254, 242, 242, 0.86)'
+                                        : 'rgba(15, 23, 42, 0.04)',
+                                      color: '#1f2937',
+                                      cursor: canOpenSearchSources ? 'pointer' : 'default',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                      <span style={{ fontSize: 14, fontWeight: 800, color: webSearchState.status === 'error' ? '#b91c1c' : '#1f2937' }}>
+                                        {webSearchState.status === 'searching'
+                                          ? '正在搜索网络来源'
+                                          : webSearchState.status === 'error'
+                                            ? '联网搜索未完成'
+                                            : `基于 ${webSearchState.count || 0} 个搜索来源`}
+                                      </span>
+                                      {searchSources.length > 0 && (
                                         <span
-                                          key={`${source.url || source.title || sourceIndex}-${sourceIndex}`}
-                                          title={source.title || `来源 ${sourceIndex + 1}`}
                                           style={{
-                                            width: 18,
-                                            height: 18,
-                                            marginLeft: sourceIndex === 0 ? 0 : -6,
-                                            borderRadius: '50%',
-                                            border: '2px solid rgba(255, 255, 255, 0.92)',
-                                            background: SOURCE_BADGE_COLORS[sourceIndex % SOURCE_BADGE_COLORS.length],
-                                            color: '#ffffff',
-                                            fontSize: 9,
-                                            fontWeight: 800,
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center',
-                                            lineHeight: 1,
+                                            marginLeft: 2,
+                                            flex: 'none',
                                           }}
                                         >
-                                          {getSourceBadgeText(source, sourceIndex)}
+                                          {searchSources.slice(0, 5).map((source, sourceIndex) => (
+                                            <span
+                                              key={`${source.url || source.title || sourceIndex}-${sourceIndex}`}
+                                              title={source.title || `来源 ${sourceIndex + 1}`}
+                                              style={{
+                                                width: 18,
+                                                height: 18,
+                                                marginLeft: sourceIndex === 0 ? 0 : -6,
+                                                borderRadius: '50%',
+                                                border: '2px solid rgba(255, 255, 255, 0.92)',
+                                                background: SOURCE_BADGE_COLORS[sourceIndex % SOURCE_BADGE_COLORS.length],
+                                                color: '#ffffff',
+                                                fontSize: 9,
+                                                fontWeight: 800,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                lineHeight: 1,
+                                              }}
+                                            >
+                                              {getSourceBadgeText(source, sourceIndex)}
+                                            </span>
+                                          ))}
                                         </span>
-                                      ))}
+                                      )}
                                     </span>
-                                  )}
-                                </span>
-                                {canOpenSearchSources && (
-                                  isWebSearchExpanded
-                                    ? <CloseOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
-                                    : <RightOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
-                                )}
-                              </button>
+                                    {canOpenSearchSources && (
+                                      isWebSearchExpanded
+                                        ? <CloseOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
+                                        : <RightOutlined style={{ fontSize: 12, color: '#64748b', flex: 'none' }} />
+                                    )}
+                                  </button>
+                                </>
+                              )}
                               {webSearchState.message && (
                                 <div style={{ color: '#b91c1c', fontSize: 12, lineHeight: 1.6 }}>
                                   {webSearchState.message}
@@ -1958,7 +2208,11 @@ const AIChatWidget = () => {
 
                           {message.content && (
                             <>
-                              <AIMarkdownContent content={message.content} tone="default" />
+                              <AIMarkdownContent
+                                content={message.content}
+                                tone="default"
+                                fallbackSources={message.webSearch?.sources || []}
+                              />
                               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
                                 <button
                                   type="button"
@@ -1986,7 +2240,7 @@ const AIChatWidget = () => {
                             </>
                           )}
 
-                          {!message.content && message.streaming && (
+                          {!message.content && message.streaming && message.responseStarted && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b590e8', fontSize: 13, fontWeight: 500 }}>
                               <span className="dot-flashing-loader" style={{ color: '#b590e8' }} />
                               <span>Berry 正在思考解答</span>
@@ -2030,8 +2284,8 @@ const AIChatWidget = () => {
                   <Select
                     value={selectedModel}
                     options={modelOptions}
-                    onChange={selectModel}
-                    disabled={isSending || !canUseAI || modelCount <= 1}
+                    onChange={handleModelChange}
+                    disabled={isSending || isSettingsSaving || !canUseAI || modelCount <= 1}
                     popupMatchSelectWidth={false}
                     suffixIcon={<DownOutlined style={{ color: '#b590e8', fontSize: 11 }} />}
                     style={{ minWidth: 0, width: 200, maxWidth: '100%' }}

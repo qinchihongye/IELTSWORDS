@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useMemo, useRef, useStat
 import apiClient from '../api/client';
 import { message } from 'antd';
 import { useAuth } from './AuthContext';
+import AvatarUnlockModal from '../components/AvatarUnlockModal';
 
 const ProgressContext = createContext(null);
 const DASHBOARD_STALE_MS = 15000;
@@ -15,6 +16,8 @@ export const ProgressProvider = ({ children }) => {
   const pendingRequestsRef = useRef(new Map());
   const lastDashboardFetchRef = useRef({ timestamp: 0, limit: null });
   const currentUserRole = user?.role ?? null;
+  const [newlyUnlockedAvatars, setNewlyUnlockedAvatars] = useState([]);
+  const [avatarUnlockModalOpen, setAvatarUnlockModalOpen] = useState(false);
 
   const runProgressRequest = useCallback((key, requestFn) => {
     const pendingRequest = pendingRequestsRef.current.get(key);
@@ -181,7 +184,14 @@ export const ProgressProvider = ({ children }) => {
   const updateWordProgress = useCallback(async (wordId, status) => {
     try {
       const response = await apiClient.post(`/api/progress/word/${wordId}`, { status });
+      const unlockedAvatars = Array.isArray(response.data?.newly_unlocked_avatars)
+        ? response.data.newly_unlocked_avatars
+        : [];
       message.success('学习状态已更新');
+      if (unlockedAvatars.length > 0) {
+        setNewlyUnlockedAvatars(unlockedAvatars);
+        setAvatarUnlockModalOpen(true);
+      }
       const previousRole = currentUserRole;
       const refreshedUser = await getCurrentUser();
       if (previousRole === 'user' && refreshedUser?.role === 'premium_user') {
@@ -260,7 +270,19 @@ export const ProgressProvider = ({ children }) => {
     fetchCheckInHistory,
   ]);
 
-  return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>;
+  return (
+    <ProgressContext.Provider value={value}>
+      {children}
+      <AvatarUnlockModal
+        open={avatarUnlockModalOpen}
+        avatars={newlyUnlockedAvatars}
+        onClose={() => {
+          setAvatarUnlockModalOpen(false);
+          setNewlyUnlockedAvatars([]);
+        }}
+      />
+    </ProgressContext.Provider>
+  );
 };
 
 export const useProgress = () => {
