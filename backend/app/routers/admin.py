@@ -23,6 +23,7 @@ from ..avatar_storage import (
     delete_builtin_avatar_file,
     delete_uploaded_avatar_file,
     get_all_builtin_avatar_keys,
+    get_preferred_builtin_avatar_filename,
     get_role_default_builtin_avatar_key,
     is_hardcoded_builtin_avatar,
     is_vip_only_builtin_avatar,
@@ -457,7 +458,7 @@ async def list_builtin_avatars(
             "variety": str((metadata.get(k) or {}).get("variety") or "").strip() or "未分类",
             "source_mtime": (metadata.get(k) or {}).get("source_mtime"),
             "vip_only": k in VIP_ONLY_BUILTIN_AVATAR_KEYS,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{k}",
+            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{get_preferred_builtin_avatar_filename(k)}",
             "is_hardcoded": is_hardcoded_builtin_avatar(k),
         }
         for k in keys
@@ -478,13 +479,16 @@ async def list_preset_avatar_files(current_user=Depends(require_super_admin)):
     for root, _, files in os.walk(preset_dir):
         for file in files:
             file_lower = file.lower()
-            if file_lower.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+            if file_lower.endswith(('.png', '.jpg', '.jpeg')):
                 rel_dir = os.path.relpath(root, preset_dir)
                 variety = rel_dir if rel_dir != "." else "默认分类"
                 avatars_name = file.rsplit('.', 1)[0]
                 
                 # We need the relative path to build the URL
-                url_path = f"{rel_dir}/{file}" if rel_dir != "." else file
+                preferred_file = f"{avatars_name}.webp"
+                preferred_path = os.path.join(root, preferred_file)
+                display_file = preferred_file if os.path.exists(preferred_path) else file
+                url_path = f"{rel_dir}/{display_file}" if rel_dir != "." else display_file
                 source_mtime = os.path.getmtime(os.path.join(root, file))
                 files_list.append({
                     "url": f"/preset-avatars/{url_path}",

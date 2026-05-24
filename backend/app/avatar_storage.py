@@ -157,6 +157,19 @@ def get_avatar_upload_url(filename: str) -> str:
     return f"{AVATAR_URL_PREFIX}/{filename}"
 
 
+def get_preferred_builtin_avatar_filename(filename: str) -> str:
+    """Return WebP sibling for built-in avatars when it exists."""
+    raw_path = Path(filename)
+    if raw_path.suffix.lower() == ".webp":
+        return filename
+
+    webp_path = BUILTIN_AVATAR_UPLOAD_DIR / raw_path.with_suffix(".webp").name
+    if webp_path.exists():
+        return webp_path.name
+
+    return filename
+
+
 def resolve_avatar_disk_path(avatar_value: str | None) -> Path | None:
     if not avatar_value or not avatar_value.startswith(f"{AVATAR_URL_PREFIX}/"):
         return None
