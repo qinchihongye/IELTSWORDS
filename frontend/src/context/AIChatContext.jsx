@@ -614,32 +614,40 @@ const readNDJSONStream = async (response, onEvent) => {
   const processLine = (line) => {
     const trimmed = line.trim();
     if (!trimmed) {
-      return;
+      return true;
     }
 
     const event = JSON.parse(trimmed);
-    onEvent(event);
+    return onEvent(event) !== false;
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
 
-    let newlineIndex = buffer.indexOf('\n');
-    while (newlineIndex >= 0) {
-      const line = buffer.slice(0, newlineIndex);
-      buffer = buffer.slice(newlineIndex + 1);
-      processLine(line);
-      newlineIndex = buffer.indexOf('\n');
+      let newlineIndex = buffer.indexOf('\n');
+      while (newlineIndex >= 0) {
+        const line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+        const shouldContinue = processLine(line);
+        if (!shouldContinue) {
+          await reader.cancel().catch(() => {});
+          return;
+        }
+        newlineIndex = buffer.indexOf('\n');
+      }
+
+      if (done) {
+        break;
+      }
     }
 
-    if (done) {
-      break;
+    if (buffer.trim()) {
+      processLine(buffer);
     }
-  }
-
-  if (buffer.trim()) {
-    processLine(buffer);
+  } finally {
+    reader.releaseLock();
   }
 };
 
@@ -1571,7 +1579,7 @@ export const AIChatProvider = ({ children }) => {
             canUseAI: true,
             selectedModel: prev.selectedModel || event.system_model_key || event.model || prev.activeModel,
           }));
-          return;
+          return false;
         }
 
         if (event.type === 'error') {
@@ -1589,6 +1597,7 @@ export const AIChatProvider = ({ children }) => {
               streamError: hasOutput ? (event.message || 'Berry 暂时没能回复成功，请稍后再试。') : '',
             };
           });
+          return false;
         }
       });
 
