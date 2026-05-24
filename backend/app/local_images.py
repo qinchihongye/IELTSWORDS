@@ -20,6 +20,12 @@ IMAGE_MIME_TYPES = {
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
 }
+IMAGE_SUFFIX_PRIORITY = {
+    ".webp": 0,
+    ".jpg": 1,
+    ".jpeg": 1,
+    ".png": 2,
+}
 
 
 def _parse_local_image_path(path: Path) -> Optional[Tuple[str, str, int]]:
@@ -58,7 +64,14 @@ def _iter_local_group_images(chapter_no: str, group_id: str) -> List[tuple[int, 
 
     deduped_files: List[tuple[int, Path]] = []
     seen_numbers = set()
-    for image_number, path in sorted(matched_files, key=lambda item: (item[0], item[1].name)):
+    for image_number, path in sorted(
+        matched_files,
+        key=lambda item: (
+            item[0],
+            IMAGE_SUFFIX_PRIORITY.get(item[1].suffix.lower(), 99),
+            item[1].name,
+        ),
+    ):
         if image_number in seen_numbers:
             continue
         seen_numbers.add(image_number)

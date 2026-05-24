@@ -2,7 +2,8 @@
 图片相关API
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 from .. import schemas, crud
@@ -81,9 +82,10 @@ async def get_image(
 
     local_image_path = get_local_group_image_path(chapter_no, group_id, image_number)
     if local_image_path and local_image_path.exists():
-        return Response(
-            content=local_image_path.read_bytes(),
+        return FileResponse(
+            path=local_image_path,
             media_type=get_local_image_media_type(local_image_path),
+            headers={"Cache-Control": "private, max-age=604800"},
         )
 
     raise HTTPException(

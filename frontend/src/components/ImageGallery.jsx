@@ -10,6 +10,42 @@ import apiClient from '../api/client';
 import { useLearning } from '../context/LearningContext';
 
 const { Text } = Typography;
+const IMAGE_OBJECT_URL_CACHE_LIMIT = 80;
+const imageObjectUrlCache = new Map();
+
+const getImageCacheKey = (imageUrl) => {
+  const token = localStorage.getItem('access_token') || '';
+  return `${token}:${imageUrl}`;
+};
+
+const getCachedObjectUrl = (imageUrl) => {
+  const cacheKey = getImageCacheKey(imageUrl);
+  const cachedObjectUrl = imageObjectUrlCache.get(cacheKey);
+  if (!cachedObjectUrl) {
+    return null;
+  }
+
+  imageObjectUrlCache.delete(cacheKey);
+  imageObjectUrlCache.set(cacheKey, cachedObjectUrl);
+  return cachedObjectUrl;
+};
+
+const cacheObjectUrl = (imageUrl, objectUrl) => {
+  const cacheKey = getImageCacheKey(imageUrl);
+  const previousObjectUrl = imageObjectUrlCache.get(cacheKey);
+  if (previousObjectUrl && previousObjectUrl !== objectUrl) {
+    URL.revokeObjectURL(previousObjectUrl);
+  }
+
+  imageObjectUrlCache.delete(cacheKey);
+  imageObjectUrlCache.set(cacheKey, objectUrl);
+
+  while (imageObjectUrlCache.size > IMAGE_OBJECT_URL_CACHE_LIMIT) {
+    const [oldestKey, oldestObjectUrl] = imageObjectUrlCache.entries().next().value;
+    imageObjectUrlCache.delete(oldestKey);
+    URL.revokeObjectURL(oldestObjectUrl);
+  }
+};
 
 const ImageGallery = ({ images = [], emptyMode }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -75,57 +111,71 @@ const ImageGallery = ({ images = [], emptyMode }) => {
 
   useEffect(() => {
     setCurrentIndex(0);
+    setImageUrls({});
   }, [images]);
 
   useEffect(() => {
-    if (!hasImages) {
-      setImageUrls({});
+    const selectedImage = images[currentIndex];
+    const selectedUrl = selectedImage?.imageUrl;
+
+    if (!hasImages || !selectedUrl) {
+      setLoading(false);
+      return;
+    }
+
+    if (imageUrls[selectedUrl]) {
+      setLoading(false);
+      return;
+    }
+
+    const cachedObjectUrl = getCachedObjectUrl(selectedUrl);
+    if (cachedObjectUrl) {
+      setImageUrls((currentUrls) => ({
+        ...currentUrls,
+        [selectedUrl]: cachedObjectUrl,
+      }));
       setLoading(false);
       return;
     }
 
     let active = true;
-    const objectUrls = [];
 
-    const loadImages = async () => {
+    const loadImage = async () => {
       setLoading(true);
-      setImageUrls({});
 
       try {
-        const entries = await Promise.all(
-          images.map(async (image) => {
-            const response = await apiClient.get(image.imageUrl, {
-              responseType: 'blob',
-            });
-            const objectUrl = URL.createObjectURL(response.data);
-            objectUrls.push(objectUrl);
-            return [image.imageUrl, objectUrl];
-          })
-        );
-
+        const response = await apiClient.get(selectedUrl, {
+          responseType: 'blob',
+        });
+        const objectUrl = URL.createObjectURL(response.data);
+        cacheObjectUrl(selectedUrl, objectUrl);
         if (active) {
-          setImageUrls(Object.fromEntries(entries));
+          setImageUrls((currentUrls) => ({
+            ...currentUrls,
+            [selectedUrl]: objectUrl,
+          }));
         }
       } catch {
         if (active) {
-          setImageUrls({});
+          setImageUrls((currentUrls) => {
+            const nextUrls = { ...currentUrls };
+            delete nextUrls[selectedUrl];
+            return nextUrls;
+          });
         }
       } finally {
         if (active) {
           setLoading(false);
-        } else {
-          objectUrls.forEach((url) => URL.revokeObjectURL(url));
         }
       }
     };
 
-    loadImages();
+    loadImage();
 
     return () => {
       active = false;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [hasImages, images]);
+  }, [currentIndex, hasImages, imageUrls, images]);
 
   if (!hasImages) {
     return (

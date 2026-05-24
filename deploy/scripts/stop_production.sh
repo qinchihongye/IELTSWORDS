@@ -12,7 +12,7 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-SERVER_PORT="${SERVER_PORT:-8889}"
+SERVER_PORT="${SERVER_PORT:-8898}"
 
 if [[ -f "$PID_FILE" ]]; then
   BACKEND_PID="$(cat "$PID_FILE" || true)"
