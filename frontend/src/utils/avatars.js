@@ -12,7 +12,7 @@ const LEGACY_BUILTIN_AVATAR_FILES = [
   '魔幻海洋.png',
 ];
 
-export const DEFAULT_BUILTIN_AVATAR_KEY = '';
+export const DEFAULT_BUILTIN_AVATAR_KEY = PREFERRED_DEFAULT_BUILTIN_AVATAR_KEY;
 const VIP_ONLY_BUILTIN_AVATAR_KEYS = new Set([
   '花舞霓裳.png',
   '石灰灯.png',
@@ -152,6 +152,15 @@ export const getAvatarSrc = (userLike) => {
   }
 
   return getBuiltinAvatarOption(userLike.avatar_value).src;
+};
+
+export const getAvatarFallbackSrc = (userLike) => {
+  if (!userLike || userLike.avatar_type === 'upload') {
+    return null;
+  }
+
+  const avatarKey = normalizeBuiltinAvatarKey(userLike.avatar_value || DEFAULT_BUILTIN_AVATAR_KEY);
+  return getBuiltinSrc(avatarKey);
 };
 
 export const getAvatarFallbackText = (name = '') => {

@@ -200,6 +200,38 @@ const SequentialSelect = () => {
     return () => { cancelled = true; };
   }, [currentGroup, words, progressMap, fetchProgressMapForWords]);
 
+  useEffect(() => {
+    const handleProgressUpdated = async (event) => {
+      const wordId = Number(event.detail?.wordId);
+      const status = event.detail?.status || 'unlearned';
+      if (wordId) {
+        setProgressMap(prev => (
+          prev[wordId] === status ? prev : { ...prev, [wordId]: status }
+        ));
+      }
+
+      const chapterNo = currentChapter?.chapterNo || currentGroup?.chapterNo;
+      if (!chapterNo) {
+        return;
+      }
+
+      try {
+        const groups = await fetchGroupsByChapter(chapterNo, { force: true });
+        setChapterGroups(prev => ({
+          ...prev,
+          [chapterNo]: sortGroupsByGroupId(groups),
+        }));
+      } catch (error) {
+        console.error('刷新分组进度失败:', error);
+      }
+    };
+
+    window.addEventListener('ieltswords:word-progress-updated', handleProgressUpdated);
+    return () => {
+      window.removeEventListener('ieltswords:word-progress-updated', handleProgressUpdated);
+    };
+  }, [currentChapter?.chapterNo, currentGroup?.chapterNo, fetchGroupsByChapter]);
+
   // 4. Start Learning
   const handleStartLearning = (index = 0) => {
     if (words.length > 0) {

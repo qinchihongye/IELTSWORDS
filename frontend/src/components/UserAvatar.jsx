@@ -1,17 +1,30 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Avatar, Modal } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { getAvatarFallbackText, getAvatarSrc, getAvatarName } from '../utils/avatars';
+import { getAvatarFallbackText, getAvatarSrc, getAvatarName, getAvatarFallbackSrc } from '../utils/avatars';
 
 const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, src: customSrc, locked = false, ...props }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const src = locked ? null : (customSrc || getAvatarSrc(user));
+  const [useFallbackSrc, setUseFallbackSrc] = useState(false);
+  const primarySrc = locked ? null : (customSrc || getAvatarSrc(user));
+  const fallbackSrc = locked || customSrc ? null : getAvatarFallbackSrc(user);
+  const src = useFallbackSrc && fallbackSrc ? fallbackSrc : primarySrc;
   const title = previewTitle || user?.username || user?.email || '头像预览';
+
+  useEffect(() => {
+    setUseFallbackSrc(false);
+  }, [primarySrc]);
 
   const avatarNode = (
     <Avatar
       size={size}
       src={src}
+      onError={() => {
+        if (fallbackSrc && src !== fallbackSrc) {
+          setUseFallbackSrc(true);
+        }
+        return false;
+      }}
       icon={locked ? <LockOutlined /> : (!src ? <UserOutlined /> : undefined)}
       style={{
         background: locked ? '#f1f5f9' : 'rgba(99, 102, 241, 0.12)',
@@ -70,6 +83,12 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
             size={200}
             src={src}
             shape="circle"
+            onError={() => {
+              if (fallbackSrc && src !== fallbackSrc) {
+                setUseFallbackSrc(true);
+              }
+              return false;
+            }}
             icon={locked ? <LockOutlined /> : (!src ? <UserOutlined /> : undefined)}
             style={{
               background: locked ? '#f1f5f9' : (style?.background || undefined),

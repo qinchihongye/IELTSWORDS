@@ -6,6 +6,7 @@ import AvatarUnlockModal from '../components/AvatarUnlockModal';
 
 const ProgressContext = createContext(null);
 const DASHBOARD_STALE_MS = 15000;
+const WORD_PROGRESS_UPDATED_EVENT = 'ieltswords:word-progress-updated';
 
 export const ProgressProvider = ({ children }) => {
   const { user, getCurrentUser } = useAuth();
@@ -187,6 +188,14 @@ export const ProgressProvider = ({ children }) => {
       const unlockedAvatars = Array.isArray(response.data?.newly_unlocked_avatars)
         ? response.data.newly_unlocked_avatars
         : [];
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(WORD_PROGRESS_UPDATED_EVENT, {
+          detail: {
+            wordId,
+            status: response.data?.status || status,
+          },
+        }));
+      }
       message.success('学习状态已更新');
       if (unlockedAvatars.length > 0) {
         setNewlyUnlockedAvatars(unlockedAvatars);

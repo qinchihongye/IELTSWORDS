@@ -18,6 +18,7 @@ from .avatar_storage import (
     VIP_ONLY_BUILTIN_AVATAR_KEYS,
     PUBLIC_DEFAULT_BUILTIN_AVATAR_KEYS,
     get_all_builtin_avatar_keys,
+    get_preferred_builtin_avatar_filename,
     is_hardcoded_builtin_avatar,
     load_builtin_avatar_metadata,
 )
@@ -420,7 +421,7 @@ def build_current_user_avatar_catalog(db: Session, user: models.User) -> dict:
             "label": _avatar_label(avatar_key, metadata),
             "variety": str(item.get("variety") or "").strip() or "未分类",
             "vip_only": is_vip,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{avatar_key}",
+            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{get_preferred_builtin_avatar_filename(avatar_key)}",
             "is_hardcoded": is_hardcoded_builtin_avatar(avatar_key),
             "unlock_source": rule.unlock_type if rule else ("vip" if is_vip else "words_mastered"),
             "is_locked": is_locked,
@@ -511,7 +512,7 @@ def build_unlocked_avatar_snapshot(db: Session, user: models.User) -> list[dict]
             "label": _avatar_label(avatar_key, metadata),
             "variety": str(item.get("variety") or "").strip() or "未分类",
             "vip_only": is_vip,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{avatar_key}",
+            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{get_preferred_builtin_avatar_filename(avatar_key)}",
             "unlock_source": rule.unlock_type if rule else ("vip" if is_vip else access_source),
         })
 

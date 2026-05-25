@@ -280,13 +280,25 @@ def _seed_builtin_avatars_from_frontend():
 
 
 def _scan_builtin_avatar_files() -> list[str]:
-    """扫描 data/builtin-avatars/ 目录下的所有图片文件。"""
+    """扫描 data/builtin-avatars/ 目录下的头像 key。
+
+    WebP files generated next to an original PNG/JPG are delivery variants, not
+    separate selectable avatar keys.
+    """
     if not BUILTIN_AVATAR_UPLOAD_DIR.exists():
         return []
-    files = []
-    for p in BUILTIN_AVATAR_UPLOAD_DIR.iterdir():
-        if p.is_file() and p.suffix.lower() in ALLOWED_SUFFIXES:
-            files.append(p.name)
+    candidates = [
+        p for p in BUILTIN_AVATAR_UPLOAD_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in ALLOWED_SUFFIXES
+    ]
+    source_stems = {
+        p.stem for p in candidates
+        if p.suffix.lower() in {".png", ".jpg", ".jpeg"}
+    }
+    files = [
+        p.name for p in candidates
+        if p.suffix.lower() != ".webp" or p.stem not in source_stems
+    ]
     return sorted(files)
 
 

@@ -2,13 +2,14 @@
  * 核心学习状态管理Context (剥离后)
  */
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import apiClient from '../api/client';
 
 const LearningContext = createContext(null);
 
 const getGroupCacheKey = (chapterNo, groupId) => `${chapterNo}:${groupId}`;
 const SESSION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const WORD_PROGRESS_UPDATED_EVENT = 'ieltswords:word-progress-updated';
 
 const getCacheNamespace = () => {
   try {
@@ -49,6 +50,25 @@ const writeSessionCache = (key, value) => {
     );
   } catch {
     // Browsers may reject sessionStorage in private mode or when quota is full.
+  }
+};
+
+const removeSessionCacheByPrefix = (prefix) => {
+  try {
+    const namespacePrefix = `ieltswords:${getCacheNamespace()}:`;
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const storageKey = sessionStorage.key(index);
+      if (!storageKey?.startsWith(namespacePrefix)) {
+        continue;
+      }
+
+      const cacheKey = storageKey.slice(namespacePrefix.length);
+      if (cacheKey.startsWith(prefix)) {
+        sessionStorage.removeItem(storageKey);
+      }
+    }
+  } catch {
+    // sessionStorage can be unavailable in private browsing modes.
   }
 };
 
@@ -116,17 +136,21 @@ export const LearningProvider = ({ children }) => {
   }, []);
 
   // 获取章节的分组
-  const fetchGroupsByChapter = useCallback(async (chapterNo) => {
+  const fetchGroupsByChapter = useCallback(async (chapterNo, options = {}) => {
     const cacheKey = String(chapterNo);
     const cachedGroups = groupsCacheRef.current.get(cacheKey);
     if (cachedGroups) {
-      return cachedGroups;
+      if (!options.force) {
+        return cachedGroups;
+      }
     }
 
     const sessionGroups = readSessionCache(`groups:${cacheKey}`);
     if (sessionGroups) {
-      groupsCacheRef.current.set(cacheKey, sessionGroups);
-      return sessionGroups;
+      if (!options.force) {
+        groupsCacheRef.current.set(cacheKey, sessionGroups);
+        return sessionGroups;
+      }
     }
 
     try {
@@ -138,6 +162,18 @@ export const LearningProvider = ({ children }) => {
       console.error('获取分组列表失败:', error);
       return [];
     }
+  }, []);
+
+  useEffect(() => {
+    const handleProgressUpdated = () => {
+      groupsCacheRef.current.clear();
+      removeSessionCacheByPrefix('groups:');
+    };
+
+    window.addEventListener(WORD_PROGRESS_UPDATED_EVENT, handleProgressUpdated);
+    return () => {
+      window.removeEventListener(WORD_PROGRESS_UPDATED_EVENT, handleProgressUpdated);
+    };
   }, []);
 
   // 获取分组的单词

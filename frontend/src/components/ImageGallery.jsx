@@ -12,6 +12,7 @@ import { useLearning } from '../context/LearningContext';
 const { Text } = Typography;
 const IMAGE_OBJECT_URL_CACHE_LIMIT = 80;
 const IMAGE_PERSISTENT_CACHE_LIMIT = 180;
+const IMAGE_CACHE_VERSION = 'v2';
 const imageObjectUrlCache = new Map();
 
 const getImageCacheKey = (imageUrl) => {
@@ -31,7 +32,7 @@ const getPersistentCacheName = () => {
   if (!userKey) {
     userKey = (localStorage.getItem('access_token') || 'anonymous').slice(-16);
   }
-  return `ieltswords-image-cache-v1-${userKey}`;
+  return `ieltswords-image-cache-${IMAGE_CACHE_VERSION}-${userKey}`;
 };
 
 const getAbsoluteImageUrl = (imageUrl) => {
@@ -53,19 +54,17 @@ const getCachedObjectUrl = (imageUrl) => {
 
 const cacheObjectUrl = (imageUrl, objectUrl) => {
   const cacheKey = getImageCacheKey(imageUrl);
-  const previousObjectUrl = imageObjectUrlCache.get(cacheKey);
-  if (previousObjectUrl && previousObjectUrl !== objectUrl) {
-    URL.revokeObjectURL(previousObjectUrl);
+  if (imageObjectUrlCache.has(cacheKey)) {
+    return imageObjectUrlCache.get(cacheKey);
   }
-
-  imageObjectUrlCache.delete(cacheKey);
   imageObjectUrlCache.set(cacheKey, objectUrl);
 
   while (imageObjectUrlCache.size > IMAGE_OBJECT_URL_CACHE_LIMIT) {
-    const [oldestKey, oldestObjectUrl] = imageObjectUrlCache.entries().next().value;
+    const [oldestKey] = imageObjectUrlCache.entries().next().value;
     imageObjectUrlCache.delete(oldestKey);
-    URL.revokeObjectURL(oldestObjectUrl);
   }
+
+  return objectUrl;
 };
 
 const openImageDatabase = () => new Promise((resolve) => {
@@ -74,7 +73,7 @@ const openImageDatabase = () => new Promise((resolve) => {
     return;
   }
 
-  const request = indexedDB.open('ieltswords-image-cache-v1', 1);
+  const request = indexedDB.open(`ieltswords-image-cache-${IMAGE_CACHE_VERSION}`, 1);
   request.onupgradeneeded = () => {
     const db = request.result;
     if (!db.objectStoreNames.contains('images')) {
@@ -131,25 +130,45 @@ const deleteIndexedImageBlob = async (absoluteUrl) => {
 
 const readPersistentImageBlob = async (imageUrl) => {
   const absoluteUrl = getAbsoluteImageUrl(imageUrl);
+  const shouldPreferWebp = imageUrl.startsWith('/api/images/');
+  const validateBlob = async (blob) => {
+    if (!blob) {
+      return null;
+    }
+    if (shouldPreferWebp && blob.type && blob.type !== 'image/webp') {
+      await deleteIndexedImageBlob(absoluteUrl);
+      if ('caches' in window) {
+        try {
+          const cache = await caches.open(getPersistentCacheName());
+          await cache.delete(absoluteUrl);
+        } catch {
+          // Ignore stale cache cleanup failures.
+        }
+      }
+      return null;
+    }
+    return blob;
+  };
+
   if (!('caches' in window)) {
-    return readIndexedImageBlob(absoluteUrl);
+    return validateBlob(await readIndexedImageBlob(absoluteUrl));
   }
 
   try {
     const cache = await caches.open(getPersistentCacheName());
     const cachedResponse = await cache.match(absoluteUrl);
     if (!cachedResponse) {
-      return readIndexedImageBlob(absoluteUrl);
+      return validateBlob(await readIndexedImageBlob(absoluteUrl));
     }
-    return cachedResponse.blob();
+    return validateBlob(await cachedResponse.blob());
   } catch {
-    return readIndexedImageBlob(absoluteUrl);
+    return validateBlob(await readIndexedImageBlob(absoluteUrl));
   }
 };
 
 const readPersistentCacheIndex = () => {
   try {
-    return JSON.parse(localStorage.getItem('ieltswords_image_cache_index') || '[]');
+    return JSON.parse(localStorage.getItem(`ieltswords_image_cache_index_${IMAGE_CACHE_VERSION}`) || '[]');
   } catch {
     return [];
   }
@@ -157,7 +176,7 @@ const readPersistentCacheIndex = () => {
 
 const writePersistentCacheIndex = (items) => {
   try {
-    localStorage.setItem('ieltswords_image_cache_index', JSON.stringify(items));
+    localStorage.setItem(`ieltswords_image_cache_index_${IMAGE_CACHE_VERSION}`, JSON.stringify(items));
   } catch {
     // Ignore quota issues; Cache Storage remains best-effort.
   }
@@ -330,8 +349,7 @@ const ImageGallery = ({ images = [], emptyMode }) => {
 
       try {
         const imageBlob = await loadImageBlob(selectedUrl);
-        const objectUrl = URL.createObjectURL(imageBlob);
-        cacheObjectUrl(selectedUrl, objectUrl);
+        const objectUrl = cacheObjectUrl(selectedUrl, URL.createObjectURL(imageBlob));
         if (active) {
           setImageUrls((currentUrls) => ({
             ...currentUrls,
