@@ -129,7 +129,7 @@ const SequentialSelect = () => {
       const chapterNo = Number(newKeys[0]);
       setLoadingPanel(chapterNo);
       try {
-        const groups = await fetchGroupsByChapter(chapterNo);
+        const groups = await fetchGroupsByChapter(chapterNo, { force: true });
         const sortedGroups = sortGroupsByGroupId(groups);
         setChapterGroups(prev => ({ ...prev, [chapterNo]: sortedGroups }));
 
@@ -204,13 +204,15 @@ const SequentialSelect = () => {
     const handleProgressUpdated = async (event) => {
       const wordId = Number(event.detail?.wordId);
       const status = event.detail?.status || 'unlearned';
+      const eventChapterNo = event.detail?.chapterNo;
+      const eventGroupId = event.detail?.groupId;
       if (wordId) {
         setProgressMap(prev => (
           prev[wordId] === status ? prev : { ...prev, [wordId]: status }
         ));
       }
 
-      const chapterNo = currentChapter?.chapterNo || currentGroup?.chapterNo;
+      const chapterNo = eventChapterNo || currentChapter?.chapterNo || currentGroup?.chapterNo;
       if (!chapterNo) {
         return;
       }
@@ -219,7 +221,20 @@ const SequentialSelect = () => {
         const groups = await fetchGroupsByChapter(chapterNo, { force: true });
         setChapterGroups(prev => ({
           ...prev,
-          [chapterNo]: sortGroupsByGroupId(groups),
+          [chapterNo]: sortGroupsByGroupId(groups).map((group) => {
+            if (!eventGroupId || String(group.groupId) !== String(eventGroupId)) {
+              return group;
+            }
+            const nextLearnedCount = Math.min(
+              Number(group.wordCount || 0),
+              Number(group.learnedCount || 0) + (status === 'learning' || status === 'mastered' ? 1 : 0)
+            );
+            return {
+              ...group,
+              learnedCount: Math.max(Number(group.learnedCount || 0), nextLearnedCount),
+              isCompleted: Number(group.wordCount || 0) > 0 && nextLearnedCount >= Number(group.wordCount || 0),
+            };
+          }),
         }));
       } catch (error) {
         console.error('刷新分组进度失败:', error);
@@ -231,6 +246,46 @@ const SequentialSelect = () => {
       window.removeEventListener('ieltswords:word-progress-updated', handleProgressUpdated);
     };
   }, [currentChapter?.chapterNo, currentGroup?.chapterNo, fetchGroupsByChapter]);
+
+  useEffect(() => {
+    const chapterNo = currentChapter?.chapterNo || currentGroup?.chapterNo;
+    const groupId = currentGroup?.groupId;
+    if (!chapterNo || !groupId || !words.length || Object.keys(progressMap).length === 0) {
+      return;
+    }
+
+    const learnedCount = words.reduce((count, word) => {
+      const status = progressMap[word.id];
+      return status === 'learning' || status === 'mastered' ? count + 1 : count;
+    }, 0);
+
+    setChapterGroups(prev => {
+      const groups = prev[chapterNo];
+      if (!groups) {
+        return prev;
+      }
+
+      let changed = false;
+      const nextGroups = groups.map((group) => {
+        if (String(group.groupId) !== String(groupId)) {
+          return group;
+        }
+
+        if (Number(group.learnedCount || 0) === learnedCount) {
+          return group;
+        }
+
+        changed = true;
+        return {
+          ...group,
+          learnedCount,
+          isCompleted: Number(group.wordCount || 0) > 0 && learnedCount >= Number(group.wordCount || 0),
+        };
+      });
+
+      return changed ? { ...prev, [chapterNo]: nextGroups } : prev;
+    });
+  }, [currentChapter?.chapterNo, currentGroup?.chapterNo, currentGroup?.groupId, progressMap, words]);
 
   // 4. Start Learning
   const handleStartLearning = (index = 0) => {

@@ -182,7 +182,7 @@ export const ProgressProvider = ({ children }) => {
   }, []);
 
   // 更新单词学习状态
-  const updateWordProgress = useCallback(async (wordId, status) => {
+  const updateWordProgress = useCallback(async (wordId, status, metadata = {}) => {
     try {
       const response = await apiClient.post(`/api/progress/word/${wordId}`, { status });
       const unlockedAvatars = Array.isArray(response.data?.newly_unlocked_avatars)
@@ -193,6 +193,8 @@ export const ProgressProvider = ({ children }) => {
           detail: {
             wordId,
             status: response.data?.status || status,
+            chapterNo: metadata.chapterNo,
+            groupId: metadata.groupId,
           },
         }));
       }

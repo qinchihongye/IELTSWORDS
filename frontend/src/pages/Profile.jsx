@@ -29,6 +29,18 @@ const normalizeAvatarOption = (option = {}) => ({
   isLocked: !!option.is_locked,
 });
 
+const getAvatarOptionSrc = (option = {}) => {
+  if (!option.url) {
+    return null;
+  }
+
+  try {
+    return new URL(option.url, apiClient.defaults.baseURL || window.location.origin).href;
+  } catch {
+    return option.url;
+  }
+};
+
 // Utility to crop image inside a canvas and return a transparent PNG blob
 const getCroppedImg = (imageSrc, croppedAreaPixels) => {
   return new Promise((resolve, reject) => {
@@ -260,7 +272,8 @@ const Profile = () => {
               >
                 <div style={{ position: 'relative', display: 'inline-flex' }}>
                   <UserAvatar
-                    user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                    user={{ avatar_type: 'builtin', avatar_value: option.key }}
+                    src={getAvatarOptionSrc(option)}
                     size={56}
                     locked={isUnlockLocked && !isAdmin}
                   />
@@ -356,7 +369,8 @@ const Profile = () => {
                 >
                   <div style={{ position: 'relative', display: 'inline-flex' }}>
                     <UserAvatar
-                      user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                      user={{ avatar_type: 'builtin', avatar_value: option.key }}
+                      src={getAvatarOptionSrc(option)}
                       size={56}
                       locked={isUnlockLocked && !isAdmin}
                     />
@@ -453,7 +467,8 @@ const Profile = () => {
                 >
                   <div style={{ position: 'relative', display: 'inline-flex' }}>
                     <UserAvatar
-                      user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                      user={{ avatar_type: 'builtin', avatar_value: option.key }}
+                      src={getAvatarOptionSrc(option)}
                       size={56}
                       locked={isUnlockLocked && !isAdmin}
                     />
@@ -580,7 +595,8 @@ const Profile = () => {
                 >
                   <div style={{ position: 'relative', display: 'inline-flex' }}>
                     <UserAvatar
-                      user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: option.key }}
+                      user={{ avatar_type: 'builtin', avatar_value: option.key }}
+                      src={getAvatarOptionSrc(option)}
                       size={56}
                       locked={isUnlockLocked && !isAdmin}
                     />
@@ -980,7 +996,8 @@ const Profile = () => {
           }}
         >
           <UserAvatar
-            user={{ ...(user || {}), avatar_type: 'builtin', avatar_value: previewAvatar?.key }}
+            user={{ avatar_type: 'builtin', avatar_value: previewAvatar?.key }}
+            src={previewAvatar ? getAvatarOptionSrc(previewAvatar) : null}
             size={200}
             locked={!!previewAvatar?.isLocked && !isAdmin}
             style={{

@@ -258,7 +258,10 @@ const Learning = () => {
       return;
     }
 
-    const updatedProgress = await updateWordProgress(currentWord.id, status);
+    const updatedProgress = await updateWordProgress(currentWord.id, status, {
+      chapterNo: currentWord.chapterNo,
+      groupId: currentWord.groupId,
+    });
     if (updatedProgress?.status) {
       setCurrentStatus(updatedProgress.status);
 
