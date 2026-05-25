@@ -254,19 +254,19 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    location /uploads/ {
+    location ^~ /uploads/ {
         alias ${ROOT_DIR}/data/uploads/;
         expires 7d;
         add_header Cache-Control "public";
     }
 
-    location /builtin-avatars/ {
+    location ^~ /builtin-avatars/ {
         alias ${ROOT_DIR}/data/builtin-avatars/;
         expires 30d;
         add_header Cache-Control "public";
     }
 
-    location /preset-avatars/ {
+    location ^~ /preset-avatars/ {
         alias ${ROOT_DIR}/预设头像/;
         expires 30d;
         add_header Cache-Control "public";

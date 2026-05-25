@@ -18,12 +18,11 @@ from ..avatar_unlocks import (
     save_avatar_unlock_rules,
 )
 from ..avatar_storage import (
-    BUILTIN_AVATAR_URL_PREFIX,
     VIP_ONLY_BUILTIN_AVATAR_KEYS,
     delete_builtin_avatar_file,
     delete_uploaded_avatar_file,
     get_all_builtin_avatar_keys,
-    get_preferred_builtin_avatar_filename,
+    get_builtin_avatar_url,
     get_role_default_builtin_avatar_key,
     is_hardcoded_builtin_avatar,
     is_vip_only_builtin_avatar,
@@ -340,7 +339,7 @@ def build_avatar_unlock_rules_response(db: Session) -> dict:
             "label": _get_avatar_admin_label(key, metadata),
             "variety": str((metadata.get(key) or {}).get("variety") or "").strip() or "未分类",
             "vip_only": key in VIP_ONLY_BUILTIN_AVATAR_KEYS,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{key}",
+            "url": get_builtin_avatar_url(key),
             "is_hardcoded": is_hardcoded_builtin_avatar(key),
             "unlock_source": configured_rule_map.get(key).unlock_type if key in configured_rule_map else None,
         }
@@ -458,7 +457,7 @@ async def list_builtin_avatars(
             "variety": str((metadata.get(k) or {}).get("variety") or "").strip() or "未分类",
             "source_mtime": (metadata.get(k) or {}).get("source_mtime"),
             "vip_only": k in VIP_ONLY_BUILTIN_AVATAR_KEYS,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{get_preferred_builtin_avatar_filename(k)}",
+            "url": get_builtin_avatar_url(k),
             "is_hardcoded": is_hardcoded_builtin_avatar(k),
         }
         for k in keys

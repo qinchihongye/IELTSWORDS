@@ -35,6 +35,21 @@ const LEGACY_RENAMED_BUILTIN_AVATAR_KEY_MAP = {
 const builtinApiBase = config.api.baseURL.replace(/\/$/, '');
 
 const getAvatarLabel = (fileName = '') => fileName.replace(/\.[^.]+$/, '');
+const toAbsoluteAvatarUrl = (url = '') => {
+  if (!url) {
+    return null;
+  }
+  if (/^(https?:|data:|blob:)/.test(url)) {
+    return url;
+  }
+
+  try {
+    return new URL(url, `${builtinApiBase}/`).href;
+  } catch (error) {
+    console.error('解析头像地址失败:', error);
+    return null;
+  }
+};
 
 const normalizeBuiltinAvatarCandidate = (avatarKey = '') => {
   const value = String(avatarKey || '').trim();
@@ -133,17 +148,12 @@ export const getAvatarSrc = (userLike) => {
     return getBuiltinAvatarOption().src;
   }
 
-  if (userLike.avatar_type === 'upload' && userLike.avatar_value) {
-    if (/^(https?:|data:)/.test(userLike.avatar_value)) {
-      return userLike.avatar_value;
-    }
+  if (userLike.avatar_url) {
+    return toAbsoluteAvatarUrl(userLike.avatar_url);
+  }
 
-    try {
-      return new URL(userLike.avatar_value, `${builtinApiBase}/`).href;
-    } catch (error) {
-      console.error('解析上传头像地址失败:', error);
-      return null;
-    }
+  if (userLike.avatar_type === 'upload' && userLike.avatar_value) {
+    return toAbsoluteAvatarUrl(userLike.avatar_value);
   }
 
   if (userLike.avatar_type === 'builtin' || !userLike.avatar_type) {

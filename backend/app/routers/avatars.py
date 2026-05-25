@@ -8,10 +8,9 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..avatar_unlocks import build_current_user_avatar_catalog
 from ..avatar_storage import (
-    BUILTIN_AVATAR_URL_PREFIX,
     VIP_ONLY_BUILTIN_AVATAR_KEYS,
+    get_builtin_avatar_url,
     get_all_builtin_avatar_keys,
-    get_preferred_builtin_avatar_filename,
     is_hardcoded_builtin_avatar,
     load_builtin_avatar_metadata,
 )
@@ -35,7 +34,7 @@ async def list_builtin_avatars():
             "label": _get_label(k),
             "variety": str((metadata.get(k) or {}).get("variety") or "").strip() or "未分类",
             "vip_only": k in VIP_ONLY_BUILTIN_AVATAR_KEYS,
-            "url": f"{BUILTIN_AVATAR_URL_PREFIX}/{get_preferred_builtin_avatar_filename(k)}",
+            "url": get_builtin_avatar_url(k),
             "is_hardcoded": is_hardcoded_builtin_avatar(k),
         }
         for k in keys

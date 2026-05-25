@@ -73,6 +73,7 @@ class User(UserBase):
     is_active: bool = True
     avatar_type: AvatarType = 'builtin'
     avatar_value: str = DEFAULT_BUILTIN_AVATAR_KEY
+    avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_login: Optional[datetime] = None

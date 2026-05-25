@@ -6,6 +6,7 @@ import io
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -168,6 +169,19 @@ def get_preferred_builtin_avatar_filename(filename: str) -> str:
         return webp_path.name
 
     return filename
+
+
+def get_builtin_avatar_url(filename: str) -> str:
+    preferred_filename = get_preferred_builtin_avatar_filename(filename)
+    return f"{BUILTIN_AVATAR_URL_PREFIX}/{quote(preferred_filename)}"
+
+
+def get_user_avatar_url(avatar_type: str | None, avatar_value: str | None) -> str | None:
+    if avatar_type == "upload":
+        return avatar_value or None
+    if not avatar_value:
+        return None
+    return get_builtin_avatar_url(avatar_value)
 
 
 def resolve_avatar_disk_path(avatar_value: str | None) -> Path | None:

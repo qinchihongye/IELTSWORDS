@@ -28,6 +28,12 @@ class User(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     last_login = Column(DateTime)
 
+    @property
+    def avatar_url(self):
+        from .avatar_storage import get_user_avatar_url
+
+        return get_user_avatar_url(self.avatar_type, self.avatar_value)
+
 class Image(Base):
     """图片表"""
     __tablename__ = "images"
