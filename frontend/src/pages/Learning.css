@@ -251,7 +251,8 @@
   .learning-header {
     flex-direction: column;
     align-items: stretch;
-    padding: 16px;
+    padding: 0 0 12px;
+    gap: 12px;
   }
 
   .learning-header__main,
@@ -263,23 +264,81 @@
 
   .learning-header__actions {
     justify-content: stretch;
+    gap: 8px;
+  }
+
+  .learning-header__actions .ant-btn {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .learning-content {
-    width: min(100% - 20px, 1320px);
-    padding-top: 18px;
+    width: 100%;
+    padding-top: 8px;
+    padding-bottom: 20px;
+  }
+
+  .learning-grid {
+    gap: 14px;
   }
 
   .learning-nav,
   .learning-nav--sequential {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .learning-title.ant-typography {
+    font-size: 20px;
+  }
+
+  .learning-subtitle.ant-typography {
+    font-size: 12px;
+  }
+
+  .word-card-face {
+    min-height: 390px !important;
+    height: auto !important;
+    padding: 24px !important;
+  }
+
+  .image-gallery-card {
+    height: 340px !important;
+  }
+
+  .image-gallery-card.empty-gallery-card .ant-card-body {
+    height: 340px !important;
   }
   
   .modern-image-frame {
-    height: 260px;
+    height: 100%;
   }
   
   .modern-image-frame img {
-    height: 260px !important;
+    height: 100% !important;
+  }
+
+  .gallery-nav-btn {
+    opacity: 1 !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .learning-header__actions {
+    flex-direction: column;
+  }
+
+  .learning-header__actions .ant-btn,
+  .learning-auto-advance {
+    width: 100%;
+  }
+
+  .word-card-face {
+    min-height: 360px !important;
+    padding: 20px !important;
+  }
+
+  .image-gallery-card {
+    height: 300px !important;
   }
 }

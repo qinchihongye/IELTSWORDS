@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, Typography, Dropdown, Modal, Avatar } from 'antd';
+import { Layout, Menu, Button, Typography, Dropdown, Modal, Avatar, Drawer, Grid } from 'antd';
 import { 
   AppstoreOutlined, 
   ReadOutlined, 
@@ -16,7 +16,8 @@ import {
   EditOutlined,
   BookOutlined,
   PictureOutlined,
-  BranchesOutlined
+  BranchesOutlined,
+  MenuOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -45,8 +46,11 @@ const MainLayout = () => {
   const { resetLearning, setMode } = useLearning();
   const { quizSession, setQuizSession } = useQuiz();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   const confirmQuizExit = (onConfirm) => {
     if (location.pathname === '/quiz' && quizSession && !quizSession.completed_at) {
@@ -72,6 +76,9 @@ const MainLayout = () => {
   };
 
   const handleMenuClick = ({ key }) => {
+    if (isMobile) {
+      setMobileMenuOpen(false);
+    }
     confirmQuizExit(() => {
       resetLearning();
       if (key === '/home') {
@@ -255,82 +262,104 @@ const MainLayout = () => {
   if (selectedKey.startsWith('/custom-books')) selectedKey = '/custom-books';
 
   return (
-    <Layout style={{ height: '100vh', overflow: 'hidden', background: 'transparent' }}>
-      <Sider 
-        trigger={null}
-        theme="light" 
-        collapsible 
-        collapsed={collapsed} 
-        onCollapse={setCollapsed}
-        width={250}
-        style={{
-          height: '100vh',
-          overflow: 'auto',
-          background: 'rgba(255, 255, 255, 0.4)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          boxShadow: '4px 0 24px rgba(0,0,0,0.02)',
-          zIndex: 10
-        }}
-      >
-        <div 
-          onMouseEnter={() => setIsHeaderHovered(true)}
-          onMouseLeave={() => setIsHeaderHovered(false)}
-          style={{ 
-            height: 64, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: collapsed ? 'center' : 'space-between',
-            padding: collapsed ? '0' : '0 20px',
-            overflow: 'hidden'
+    <Layout style={{ height: '100dvh', overflow: 'hidden', background: 'transparent' }}>
+      {!isMobile && (
+        <Sider
+          trigger={null}
+          theme="light"
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          width={250}
+          style={{
+            height: '100vh',
+            overflow: 'auto',
+            background: 'rgba(255, 255, 255, 0.4)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: '4px 0 24px rgba(0,0,0,0.02)',
+            zIndex: 10
           }}
         >
-          {(!collapsed || !isHeaderHovered) && (
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <img 
-                src="/favicon.png" 
-                alt="Logo" 
+          <div
+            onMouseEnter={() => setIsHeaderHovered(true)}
+            onMouseLeave={() => setIsHeaderHovered(false)}
+            style={{
+              height: 64,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'space-between',
+              padding: collapsed ? '0' : '0 20px',
+              overflow: 'hidden'
+            }}
+          >
+            {(!collapsed || !isHeaderHovered) && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <img
+                  src="/favicon.png"
+                  alt="Logo"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '6px',
+                    boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)',
+                    objectFit: 'cover'
+                  }}
+                />
+              </div>
+            )}
+            {(!collapsed || isHeaderHovered) && (
+              <Button
+                type="text"
+                icon={<SidebarIcon />}
+                onClick={() => setCollapsed(!collapsed)}
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '6px',
-                  boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)',
-                  objectFit: 'cover'
+                  width: 36,
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#6b7280',
+                  borderRadius: '8px',
+                  flexShrink: 0
                 }}
               />
-            </div>
-          )}
-          {(!collapsed || isHeaderHovered) && (
-            <Button
-              type="text"
-              icon={<SidebarIcon />}
-              onClick={() => setCollapsed(!collapsed)}
-              style={{
-                width: 36,
-                height: 36,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#6b7280',
-                borderRadius: '8px',
-                flexShrink: 0
-              }}
-            />
-          )}
-        </div>
-        <Menu 
-          theme="light" 
-          mode="inline" 
-          selectedKeys={[selectedKey]} 
+            )}
+          </div>
+          <Menu
+            theme="light"
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            onClick={handleMenuClick}
+            items={menuItems}
+            style={{ borderRight: 0, background: 'transparent' }}
+          />
+        </Sider>
+      )}
+      <Drawer
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        placement="left"
+        width="min(86vw, 320px)"
+        bodyStyle={{ padding: 0, background: 'rgba(255,255,255,0.94)' }}
+        headerStyle={{ borderBottom: '1px solid rgba(148, 163, 184, 0.18)' }}
+        title="菜单"
+      >
+        <Menu
+          theme="light"
+          mode="inline"
+          selectedKeys={[selectedKey]}
           onClick={handleMenuClick}
           items={menuItems}
-          style={{ borderRight: 0, background: 'transparent' }}
+          style={{ borderRight: 0, background: 'transparent', padding: '8px 0' }}
         />
-      </Sider>
+      </Drawer>
       
-      <Layout style={{ height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+      <Layout style={{ height: '100dvh', overflow: 'hidden', background: 'transparent' }}>
         <Header style={{ 
-          padding: '0 32px', 
+          padding: isMobile ? '0 12px' : '0 32px',
+          height: isMobile ? 56 : 64,
+          lineHeight: isMobile ? '56px' : '64px',
           background: 'rgba(255, 255, 255, 0.5)', 
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
@@ -342,11 +371,27 @@ const MainLayout = () => {
           zIndex: 9
         }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
+            {isMobile && (
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setMobileMenuOpen(true)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 8,
+                  borderRadius: 10,
+                }}
+              />
+            )}
             <Title level={5} style={{ margin: 0, fontWeight: 600, color: '#374151' }}>
               {menuItems.flatMap(g => g.children || [g]).find(i => i.key === selectedKey)?.label || 'Dashboard'}
             </Title>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
             <Dropdown menu={userMenu} placement="bottomRight" arrow>
               <div 
                 onDoubleClick={() => setAvatarPreviewOpen(true)}
@@ -354,7 +399,7 @@ const MainLayout = () => {
                 style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 10, padding: '4px 12px 4px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.05)' }}
               >
                 <UserAvatar user={user} size={28} />
-                <Text style={{ fontWeight: 500, color: '#4b5563' }}>{user?.username}</Text>
+                {!isMobile && <Text style={{ fontWeight: 500, color: '#4b5563' }}>{user?.username}</Text>}
               </div>
             </Dropdown>
 
@@ -399,7 +444,7 @@ const MainLayout = () => {
         </Header>
         
         <Content style={{ 
-          padding: '24px 32px',
+          padding: isMobile ? '12px' : '24px 32px',
           position: 'relative',
           overflowY: 'auto'
         }}>

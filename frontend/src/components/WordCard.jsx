@@ -200,6 +200,7 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
             onClick={() => setShowAnswer(true)}
           >
             <div
+              className="word-card-face"
               ref={frontCardRef}
               onMouseMove={handleMouseMove}
               onMouseEnter={handleMouseEnter}
@@ -358,6 +359,7 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
             onClick={() => setShowAnswer(false)}
           >
             <div
+              className="word-card-face"
               style={{
                 borderRadius: '24px',
                 background: '#ffffff',

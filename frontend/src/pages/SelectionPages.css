@@ -303,12 +303,13 @@
   .selection-header {
     flex-direction: column;
     align-items: stretch;
-    padding: 16px;
+    padding: 0 0 12px;
   }
 
   .selection-content {
-    width: min(100% - 20px, 1180px);
-    padding-top: 18px;
+    width: 100%;
+    padding-top: 8px;
+    padding-bottom: 20px;
   }
 
   .selection-grid .ant-list-items,
@@ -322,6 +323,54 @@
 
   .selection-word-card .ant-card-body {
     align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .sleek-main-header {
+    padding: 18px !important;
+  }
+
+  .sleek-main-title {
+    font-size: 26px;
+  }
+
+  .sleek-word-list {
+    padding: 8px 18px 18px;
+  }
+
+  .sleek-word-row {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 0;
+  }
+
+  .sleek-word-index {
+    width: 42px;
+    padding-top: 2px;
+  }
+
+  .sleek-word-info {
+    min-width: 0;
+  }
+
+  .sleek-word-def {
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .sleek-word-row {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .sleek-word-row > div:last-child {
+    grid-column: 2;
+  }
+
+  .sleek-badge {
+    width: fit-content;
   }
 }
 

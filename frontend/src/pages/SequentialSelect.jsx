@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Card, Typography, Button, Spin, Collapse, Badge, Tooltip } from 'antd';
+import { Card, Typography, Button, Spin, Collapse, Badge, Tooltip, Grid } from 'antd';
 import { BookOutlined, RightOutlined, ArrowRightOutlined, VerticalAlignTopOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useLearning } from '../context/LearningContext';
@@ -60,6 +60,8 @@ const loadLastPosition = () => {
 
 const SequentialSelect = () => {
   const navigate = useNavigate();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const {
     fetchChapters,
     fetchGroupsByChapter,
@@ -300,9 +302,10 @@ const SequentialSelect = () => {
     <motion.div 
       className="page-wrapper" 
       style={{ 
-        maxWidth: 1400, 
+        maxWidth: 1400,
+        width: '100%',
         margin: '0 auto', 
-        height: '100%', 
+        minHeight: '100%',
         display: 'flex', 
         flexDirection: 'column' 
       }} 
@@ -310,10 +313,18 @@ const SequentialSelect = () => {
       animate={{ opacity: 1, y: 0 }} 
       transition={{ type: 'spring', stiffness: 300, damping: 24 }}
     >
-      <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0, paddingBottom: 24 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? 12 : 24,
+        flex: 1,
+        minHeight: 0,
+        paddingBottom: isMobile ? 12 : 24
+      }}>
         {/* Left Pane: Explorer Tree (Original Glassy Box-in-Box layout) */}
         <div style={{ 
-          width: 340, 
+          width: isMobile ? '100%' : 340,
+          maxHeight: isMobile ? '46dvh' : undefined,
           display: 'flex', 
           flexDirection: 'column',
           background: 'rgba(255, 255, 255, 0.5)',
@@ -323,7 +334,7 @@ const SequentialSelect = () => {
           boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
           overflow: 'hidden'
         }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.4)' }}>
+          <div style={{ padding: isMobile ? '12px 14px' : '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.4)' }}>
             <Text strong style={{ color: '#4b5563', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>课程目录 Curriculum</Text>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }} className="custom-scroll">
@@ -364,7 +375,7 @@ const SequentialSelect = () => {
                             display: 'flex', 
                             flexDirection: 'column', 
                             gap: 6,
-                            height: '174px',
+                            height: isMobile ? '210px' : '174px',
                             overflowY: 'auto', 
                             padding: '8px',
                           }}
@@ -515,7 +526,8 @@ const SequentialSelect = () => {
           border: '1px solid rgba(255, 255, 255, 0.8)',
           borderRadius: 24,
           boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          minHeight: isMobile ? '62dvh' : undefined
         }}>
           {loadingWords ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -529,21 +541,30 @@ const SequentialSelect = () => {
           ) : (
             <>
               {/* New Sleek Header inside the glassy pane */}
-              <div className="sleek-main-header" style={{ padding: '24px 32px' }}>
+              <div
+                className="sleek-main-header"
+                style={{
+                  padding: isMobile ? '18px' : '24px 32px',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? 14 : 0,
+                }}
+              >
                 <div>
                   <h1 className="sleek-main-title">{currentGroup.groupId}</h1>
                   <div className="sleek-main-subtitle">{currentGroup.groupTheme} · {words.length} words</div>
                 </div>
                 <Button
                   type="primary"
-                  size="large"
+                  size={isMobile ? 'middle' : 'large'}
                   onClick={() => handleStartLearning(0)}
                   style={{
                     background: '#111827',
                     border: 'none',
                     fontWeight: 600,
                     borderRadius: 8,
-                    padding: '0 24px'
+                    padding: '0 24px',
+                    width: isMobile ? '100%' : undefined,
                   }}
                 >
                   开始学习
