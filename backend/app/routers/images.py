@@ -5,6 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from urllib.parse import quote
 from typing import List
 from .. import schemas, crud
 from ..database import get_db
@@ -17,6 +18,20 @@ from ..local_images import (
 from .. import models
 
 router = APIRouter()
+
+
+def _build_versioned_image_url(chapter_no: str, group_id: str, image_number: int) -> str:
+    image_path = get_local_group_image_path(chapter_no, group_id, image_number)
+    if not image_path:
+        return f"/api/images/{chapter_no}/{group_id}/{image_number}"
+
+    try:
+        stat = image_path.stat()
+        version = f"{image_path.suffix.lower().lstrip('.')}-{stat.st_mtime_ns}-{stat.st_size}"
+    except OSError:
+        version = image_path.suffix.lower().lstrip('.') or "image"
+
+    return f"/api/images/{chapter_no}/{group_id}/{image_number}?v={quote(version)}"
 
 @router.get("/{group_id}", response_model=List[schemas.ImageInfo])
 async def get_group_images(
@@ -49,7 +64,7 @@ async def get_group_images(
     image_list = [
         {
             "imageNumber": image_number,
-            "imageUrl": f"/api/images/{chapter_no}/{group_id}/{image_number}",
+            "imageUrl": _build_versioned_image_url(chapter_no, group_id, image_number),
             "chapterNo": chapter_no,
             "groupId": group_id,
         }

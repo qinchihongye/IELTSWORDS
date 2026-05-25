@@ -8,6 +8,7 @@ import apiClient from '../api/client';
 const LearningContext = createContext(null);
 
 const getGroupCacheKey = (chapterNo, groupId) => `${chapterNo}:${groupId}`;
+const SESSION_CACHE_VERSION = 'v2';
 const SESSION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const WORD_PROGRESS_UPDATED_EVENT = 'ieltswords:word-progress-updated';
 
@@ -23,7 +24,7 @@ const getCacheNamespace = () => {
   return (localStorage.getItem('access_token') || 'anonymous').slice(-16);
 };
 
-const getSessionCacheKey = (key) => `ieltswords:${getCacheNamespace()}:${key}`;
+const getSessionCacheKey = (key) => `ieltswords:${SESSION_CACHE_VERSION}:${getCacheNamespace()}:${key}`;
 
 const readSessionCache = (key) => {
   try {
