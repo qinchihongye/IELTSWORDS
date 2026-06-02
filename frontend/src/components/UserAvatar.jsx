@@ -1,19 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Avatar, Modal } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { getAvatarFallbackText, getAvatarSrc, getAvatarName, getAvatarFallbackSrc } from '../utils/avatars';
 
 const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle, src: customSrc, locked = false, ...props }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [useFallbackSrc, setUseFallbackSrc] = useState(false);
+  const [failedPrimarySrc, setFailedPrimarySrc] = useState('');
   const primarySrc = locked ? null : (customSrc || getAvatarSrc(user));
   const fallbackSrc = locked || customSrc ? null : getAvatarFallbackSrc(user);
-  const src = useFallbackSrc && fallbackSrc ? fallbackSrc : primarySrc;
+  const shouldUseFallbackSrc = Boolean(fallbackSrc && primarySrc && failedPrimarySrc === primarySrc);
+  const src = shouldUseFallbackSrc ? fallbackSrc : primarySrc;
   const title = previewTitle || user?.username || user?.email || '头像预览';
-
-  useEffect(() => {
-    setUseFallbackSrc(false);
-  }, [primarySrc]);
 
   const avatarNode = (
     <Avatar
@@ -21,7 +18,7 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
       src={src}
       onError={() => {
         if (fallbackSrc && src !== fallbackSrc) {
-          setUseFallbackSrc(true);
+          setFailedPrimarySrc(primarySrc || '');
         }
         return false;
       }}
@@ -85,7 +82,7 @@ const UserAvatar = ({ user, size = 40, style, previewable = false, previewTitle,
             shape="circle"
             onError={() => {
               if (fallbackSrc && src !== fallbackSrc) {
-                setUseFallbackSrc(true);
+                setFailedPrimarySrc(primarySrc || '');
               }
               return false;
             }}

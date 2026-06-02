@@ -208,6 +208,38 @@ const encodeMarkdownExportContent = (text) => {
   }
 };
 
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+  reader.onerror = () => reject(new Error('读取资源失败'));
+  reader.readAsDataURL(blob);
+});
+
+const fetchAssetAsDataUrl = async (assetUrl) => {
+  const url = String(assetUrl || '').trim();
+  if (!url) {
+    return '';
+  }
+
+  if (url.startsWith('data:')) {
+    return url;
+  }
+
+  try {
+    const response = await fetch(url, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    return await blobToDataUrl(blob);
+  } catch (error) {
+    console.warn('导出 HTML 时内嵌资源失败:', url, error);
+    return url;
+  }
+};
+
 const getFirstUserQuestion = (session) => {
   const firstUserMessage = Array.isArray(session?.messages)
     ? session.messages.find((messageItem) => messageItem?.role === 'user' && normalizeHistoryText(messageItem?.content))
@@ -1028,26 +1060,45 @@ const AIChatWidget = () => {
     }
   };
 
-  const handleExportChatSession = (session) => {
+  const handleExportChatSession = async (session) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return;
     }
 
-    const aiAvatarSrc = new URL('/ai-avatar.png', window.location.origin).href;
-    const userAvatarUrl = getAvatarSrc(user);
-    const userAvatarSrc = userAvatarUrl.startsWith('http') ? userAvatarUrl : new URL(userAvatarUrl, window.location.origin).href;
+    try {
+      const aiAvatarUrl = new URL('/ai-avatar.png', window.location.origin).href;
+      const rawUserAvatarUrl = getAvatarSrc(user);
+      const userAvatarUrl = rawUserAvatarUrl
+        ? (rawUserAvatarUrl.startsWith('http') ? rawUserAvatarUrl : new URL(rawUserAvatarUrl, window.location.origin).href)
+        : '';
 
-    const userName = user?.username || '用户';
-    const blob = new Blob([buildChatExportHTML(session, userAvatarSrc, aiAvatarSrc, userName)], { type: 'text/html;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = createSafeDownloadName(session.title);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-    message.success('聊天记录已导出');
+      const [embeddedUserAvatarSrc, embeddedAiAvatarSrc] = await Promise.all([
+        fetchAssetAsDataUrl(userAvatarUrl),
+        fetchAssetAsDataUrl(aiAvatarUrl),
+      ]);
+
+      const userName = user?.username || '用户';
+      const blob = new Blob([
+        buildChatExportHTML(
+          session,
+          embeddedUserAvatarSrc || userAvatarUrl,
+          embeddedAiAvatarSrc || aiAvatarUrl,
+          userName,
+        ),
+      ], { type: 'text/html;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = createSafeDownloadName(session.title);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success('聊天记录已导出');
+    } catch (error) {
+      console.error('导出聊天记录失败:', error);
+      message.error('导出聊天记录失败');
+    }
   };
 
   const openEditHistoryTitle = (session) => {
