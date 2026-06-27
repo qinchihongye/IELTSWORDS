@@ -249,7 +249,7 @@ const loadImageBlob = async (imageUrl) => {
   return response.data;
 };
 
-const ImageGallery = ({ images = [], emptyMode }) => {
+const ImageGallery = ({ images = [], currentWord, emptyMode }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
   const [imageUrls, setImageUrls] = useState({});
@@ -309,17 +309,35 @@ const ImageGallery = ({ images = [], emptyMode }) => {
     }
   }, [lensRadius, isHovered, maskRadius]);
 
-  const hasImages = images.length > 0;
-  const selectedImage = images[currentIndex];
+  // Combine word photo (derived from currentWord) and group photo (from images[0])
+  const displayImages = React.useMemo(() => {
+    const list = [];
+    if (currentWord) {
+      list.push({
+        imageNumber: 1,
+        imageUrl: `/api/images/word/${currentWord.chapterNo}/${currentWord.groupId}/${encodeURIComponent(currentWord.word)}`,
+        chapterNo: currentWord.chapterNo,
+        groupId: currentWord.groupId,
+        label: "单词配图"
+      });
+    }
+    if (images && images.length > 0) {
+      list.push({ ...images[0], imageNumber: 2, label: "分组配图" });
+    }
+    return list;
+  }, [images, currentWord]);
+
+  const hasImages = displayImages.length > 0;
+  const selectedImage = displayImages[currentIndex];
   const selectedObjectUrl = selectedImage ? imageUrls[selectedImage.imageUrl] : '';
 
   useEffect(() => {
     setCurrentIndex(0);
     setImageUrls({});
-  }, [images]);
+  }, [displayImages]);
 
   useEffect(() => {
-    const selectedImage = images[currentIndex];
+    const selectedImage = displayImages[currentIndex];
     const selectedUrl = selectedImage?.imageUrl;
 
     if (!hasImages || !selectedUrl) {
@@ -376,15 +394,15 @@ const ImageGallery = ({ images = [], emptyMode }) => {
     return () => {
       active = false;
     };
-  }, [currentIndex, hasImages, imageUrls, images]);
+  }, [currentIndex, hasImages, imageUrls, displayImages]);
 
   useEffect(() => {
-    if (!hasImages || !selectedImage || !selectedObjectUrl || images.length < 2) {
+    if (!hasImages || !selectedImage || !selectedObjectUrl || displayImages.length < 2) {
       return undefined;
     }
 
     let cancelled = false;
-    const nextImage = images[(currentIndex + 1) % images.length];
+    const nextImage = displayImages[(currentIndex + 1) % displayImages.length];
     const nextUrl = nextImage?.imageUrl;
 
     if (!nextUrl || getCachedObjectUrl(nextUrl)) {
@@ -426,7 +444,7 @@ const ImageGallery = ({ images = [], emptyMode }) => {
       cancelled = true;
       cancelScheduledPreload();
     };
-  }, [currentIndex, hasImages, images, selectedImage, selectedObjectUrl]);
+  }, [currentIndex, hasImages, displayImages, selectedImage, selectedObjectUrl]);
 
   if (!hasImages) {
     return (
@@ -470,12 +488,12 @@ const ImageGallery = ({ images = [], emptyMode }) => {
 
   const handlePrev = (e) => {
     e.stopPropagation();
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : displayImages.length - 1));
   };
 
   const handleNext = (e) => {
     e.stopPropagation();
-    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+    setCurrentIndex((prev) => (prev < displayImages.length - 1 ? prev + 1 : 0));
   };
 
   return (
@@ -538,7 +556,7 @@ const ImageGallery = ({ images = [], emptyMode }) => {
               whiteSpace: 'nowrap'
             }}
           >
-            第 {currentIndex + 1}/{images.length} 张
+            {selectedImage?.label || `配图 ${currentIndex + 1}`} ({currentIndex + 1}/{displayImages.length})
           </span>
         </div>
       </div>
@@ -646,7 +664,7 @@ const ImageGallery = ({ images = [], emptyMode }) => {
               }}
             />
 
-            {images.length > 1 && (
+            {displayImages.length > 1 && (
               <>
                 <Button
                   shape="circle"

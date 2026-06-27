@@ -13,6 +13,7 @@ from ..dependencies import get_current_user, has_min_role
 from ..local_images import (
     get_local_group_image_numbers,
     get_local_group_image_path,
+    get_local_word_image_path,
     get_local_image_media_type,
 )
 from .. import models
@@ -32,6 +33,7 @@ def _build_versioned_image_url(chapter_no: str, group_id: str, image_number: int
         version = image_path.suffix.lower().lstrip('.') or "image"
 
     return f"/api/images/{chapter_no}/{group_id}/{image_number}?v={quote(version)}"
+
 
 @router.get("/{group_id}", response_model=List[schemas.ImageInfo])
 async def get_group_images(
@@ -73,6 +75,7 @@ async def get_group_images(
 
     return image_list
 
+
 @router.get("/{chapter_no}/{group_id}/{image_number}")
 async def get_image(
     chapter_no: str,
@@ -106,4 +109,40 @@ async def get_image(
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="图片不存在"
+    )
+
+
+@router.get("/word/{chapter_no}/{group_id}/{word}")
+async def get_word_image(
+    chapter_no: str,
+    group_id: str,
+    word: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    直接返回单词图片二进制流
+    """
+    if not has_min_role(current_user, "premium_user") and not crud.is_group_unlocked_for_user(
+        db,
+        chapter_no,
+        group_id,
+        current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该分组尚未解锁"
+        )
+
+    local_image_path = get_local_word_image_path(chapter_no, group_id, word)
+    if local_image_path and local_image_path.exists():
+        return FileResponse(
+            path=local_image_path,
+            media_type=get_local_image_media_type(local_image_path),
+            headers={"Cache-Control": "private, max-age=604800"},
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="单词图片不存在"
     )

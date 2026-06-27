@@ -236,10 +236,28 @@ const AdminUsers = () => {
       width: 150,
       render: (value) => {
         if (!value) return '-';
-        const d = new Date(value);
-        const pad = (n) => String(n).padStart(2, '0');
-        const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+        try {
+          let str = String(value);
+          if (!str.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+            str = str.replace(' ', 'T') + 'Z';
+          }
+          const d = new Date(str);
+          const parts = new Intl.DateTimeFormat('zh-CN', {
+            timeZone: 'Asia/Shanghai',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          }).formatToParts(d);
+          const pm = {};
+          parts.forEach(p => { pm[p.type] = p.value; });
+          const formatted = `${pm.year}-${pm.month}-${pm.day} ${pm.hour}:${pm.minute}`;
+          return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+        } catch {
+          return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{String(value)}</Text>;
+        }
       },
     },
     {
@@ -249,10 +267,28 @@ const AdminUsers = () => {
       width: 150,
       render: (value) => {
         if (!value) return '-';
-        const d = new Date(value);
-        const pad = (n) => String(n).padStart(2, '0');
-        const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+        try {
+          let str = String(value);
+          if (!str.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+            str = str.replace(' ', 'T') + 'Z';
+          }
+          const d = new Date(str);
+          const parts = new Intl.DateTimeFormat('zh-CN', {
+            timeZone: 'Asia/Shanghai',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          }).formatToParts(d);
+          const pm = {};
+          parts.forEach(p => { pm[p.type] = p.value; });
+          const formatted = `${pm.year}-${pm.month}-${pm.day} ${pm.hour}:${pm.minute}`;
+          return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{formatted}</Text>;
+        } catch {
+          return <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{String(value)}</Text>;
+        }
       },
     },
     {

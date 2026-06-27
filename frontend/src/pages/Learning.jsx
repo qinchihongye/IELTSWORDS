@@ -597,7 +597,7 @@ const Learning = () => {
           </div>
 
           <aside className="learning-sidebar">
-            <ImageGallery images={images} emptyMode={activeMode} />
+            <ImageGallery images={images} currentWord={currentWord} emptyMode={activeMode} />
           </aside>
         </div>
         
