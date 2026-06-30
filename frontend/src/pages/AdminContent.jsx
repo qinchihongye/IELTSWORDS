@@ -428,7 +428,15 @@ const AdminContent = () => {
                                     >
                                       <div>
                                         <div className="admin-group-id">{group.groupId}</div>
-                                        <div className="admin-group-theme">{group.groupTheme}</div>
+                                        {group.groupTheme && group.groupTheme.length > 20 ? (
+                                          <Tooltip title={group.groupTheme}>
+                                            <div className="admin-group-theme">
+                                              {`${group.groupTheme.slice(0, 20)}...`}
+                                            </div>
+                                          </Tooltip>
+                                        ) : (
+                                          <div className="admin-group-theme">{group.groupTheme}</div>
+                                        )}
                                       </div>
                                       <Text type="secondary" style={{ fontSize: 12 }}>{group.wordCount} 词</Text>
                                     </div>

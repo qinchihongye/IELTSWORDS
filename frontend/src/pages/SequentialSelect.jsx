@@ -91,6 +91,7 @@ const SequentialSelect = () => {
   // Right pane state
   const [loadingWords, setLoadingWords] = useState(false);
   const [progressMap, setProgressMap] = useState({});
+  const [progressMapKey, setProgressMapKey] = useState(null);
   const [activeWordId, setActiveWordId] = useState(null);
 
   // 2. Handle Chapter Expansion (Fetch Groups)
@@ -103,11 +104,14 @@ const SequentialSelect = () => {
     setCurrentGroup(group);
     saveLastPosition(chapter.chapterNo, group.groupId);
     setLoadingWords(true);
+    setProgressMap({});
+    setProgressMapKey(null);
 
     try {
       const wordsData = await fetchWordsByGroup(chapter.chapterNo, group.groupId);
       const nextProgressMap = await fetchProgressMapForWords(wordsData.map(w => w.id));
       setProgressMap(nextProgressMap);
+      setProgressMapKey(`${chapter.chapterNo}:${group.groupId}`);
       setActiveWordId(wordsData[0]?.id || null);
     } catch(e) {
        console.error(e);
@@ -188,19 +192,28 @@ const SequentialSelect = () => {
   useEffect(() => {
     let cancelled = false;
     const restoreProgress = async () => {
-      // If we have words from context, but progressMap is empty, fetch it
-      if (currentGroup && words.length > 0 && Object.keys(progressMap).length === 0) {
-        try {
-          const nextProgressMap = await fetchProgressMapForWords(words.map(w => w.id));
-          if (!cancelled) setProgressMap(nextProgressMap);
-        } catch(e) {
-          console.error(e);
+      if (!currentGroup || words.length === 0) {
+        return;
+      }
+
+      const currentProgressKey = `${currentGroup.chapterNo}:${currentGroup.groupId}`;
+      if (progressMapKey === currentProgressKey) {
+        return;
+      }
+
+      try {
+        const nextProgressMap = await fetchProgressMapForWords(words.map(w => w.id));
+        if (!cancelled) {
+          setProgressMap(nextProgressMap);
+          setProgressMapKey(currentProgressKey);
         }
+      } catch(e) {
+        console.error(e);
       }
     };
     void restoreProgress();
     return () => { cancelled = true; };
-  }, [currentGroup, words, progressMap, fetchProgressMapForWords]);
+  }, [currentGroup, words, progressMapKey, fetchProgressMapForWords]);
 
   useEffect(() => {
     const handleProgressUpdated = async (event) => {
@@ -424,7 +437,17 @@ const SequentialSelect = () => {
                                   <div style={{ fontSize: 14, fontWeight: isActive ? 700 : 500, color: isActive ? '#111827' : '#4b5563' }}>
                                     {group.groupId}
                                   </div>
-                                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{group.groupTheme}</div>
+                                  {group.groupTheme && group.groupTheme.length > 20 ? (
+                                    <Tooltip title={group.groupTheme}>
+                                      <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                        {`${group.groupTheme.slice(0, 20)}...`}
+                                      </div>
+                                    </Tooltip>
+                                  ) : (
+                                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                      {group.groupTheme}
+                                    </div>
+                                  )}
                                 </div>
                                 
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
