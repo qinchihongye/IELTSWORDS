@@ -8,7 +8,7 @@ import pandas as pd
 
 # Files & Paths
 xlsx_file = '词汇真经_new_group.xlsx'
-db_path = Path('db/ielts_words.db')
+db_path = Path('db/ielts_words_app.db')
 
 group_output_dir = Path('data/images/group')
 word_output_dir = Path('data/images/word')
@@ -98,6 +98,30 @@ def save_image_from_formula(zip_ref, formula, image_id_to_file, dest_path_withou
         return None
 
 
+def load_existing_phonetics(cursor):
+    """读取重建前已有单词音标，避免新版 Excel 导入时清空读音。"""
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='word_details'")
+    if not cursor.fetchone():
+        return {}
+
+    cursor.execute("PRAGMA table_info(word_details)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if not {"word", "phonetics_uk", "phonetics_us"}.issubset(columns):
+        return {}
+
+    cursor.execute("""
+        SELECT lower(trim(word)), phonetics_uk, phonetics_us
+        FROM word_details
+        WHERE (phonetics_uk IS NOT NULL AND phonetics_uk != '')
+           OR (phonetics_us IS NOT NULL AND phonetics_us != '')
+    """)
+    return {
+        word: (phonetics_uk, phonetics_us)
+        for word, phonetics_uk, phonetics_us in cursor.fetchall()
+        if word
+    }
+
+
 def main():
     if not os.path.exists(xlsx_file):
         print(f"❌ 未找到 Excel 文件: {xlsx_file}")
@@ -114,6 +138,7 @@ def main():
     print(f"连接数据库: {db_path}")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    existing_phonetics = load_existing_phonetics(cursor)
 
     # Recreate tables to ensure they match exact schemas
     cursor.execute("DROP TABLE IF EXISTS words")
@@ -155,6 +180,8 @@ def main():
         new_prompt TEXT,
         group_words TEXT,
         "单词备注" TEXT,
+        phonetics_uk TEXT,
+        phonetics_us TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -242,14 +269,15 @@ def main():
             words_inserted += 1
 
             # 4. 写入 word_details 表
+            phonetics_uk, phonetics_us = existing_phonetics.get(str(word).strip().lower(), (None, None))
             cursor.execute('''
                 INSERT INTO word_details (
                     chapterNo, chapterName, groupId, groupTheme, wordNo, word,
                     explanation, candidateWords, json, roots_affixes, derivatives,
                     exampleSentence, sentenceMeaning, "group", photo_prompt,
-                    new_prompt, group_words, "单词备注"
+                    new_prompt, group_words, "单词备注", phonetics_uk, phonetics_us
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
             ''', (
                 chapter_no, chapter_name, group_id, group_theme, word_no, word,
                 explanation,
@@ -262,7 +290,9 @@ def main():
                 str(row['group']) if pd.notna(row['group']) else None,
                 str(row['photo_prompt']) if pd.notna(row['photo_prompt']) else None,
                 str(row['word_image_prompt']) if pd.notna(row['word_image_prompt']) else None,
-                str(row['group_words']) if pd.notna(row['group_words']) else None
+                str(row['group_words']) if pd.notna(row['group_words']) else None,
+                phonetics_uk,
+                phonetics_us
             ))
             details_inserted += 1
 
@@ -281,4 +311,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
