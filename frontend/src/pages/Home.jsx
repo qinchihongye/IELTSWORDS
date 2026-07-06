@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Typography, Spin } from 'antd';
+import { Typography, Spin, Grid } from 'antd';
 import {
   RiseOutlined,
   FireFilled,
@@ -64,6 +64,8 @@ const Home = () => {
   const { user } = useAuth();
   const leaderboardListRef = useRef(null);
   const [chapterExpanded, setChapterExpanded] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   const {
     stats,
@@ -161,16 +163,7 @@ const Home = () => {
     >
       <style>{bentoCss}</style>
 
-      <motion.div variants={itemVariants} className="bento-header">
-        <div>
-          <Title level={2} style={{ margin: 0, color: '#0f172a', fontWeight: 700, letterSpacing: '-0.5px' }}>
-            我的进度
-          </Title>
-          <Text style={{ color: '#64748b', fontSize: '15px' }}>
-            欢迎回来, {user?.username}。一览你的学习进度与全球排名。
-          </Text>
-        </div>
-      </motion.div>
+
 
       <div className="dashboard-top-grid">
         <div className="dashboard-summary-col">
@@ -213,33 +206,63 @@ const Home = () => {
               </div>
 
               <div className="overview-layout">
-                <div className="overview-donut-panel">
-                  <div className="donut-area">
-                    <DonutChart data={chartData} total={stats.totalWords} centerText="总词汇" />
-                  </div>
-                  <div className="mastery-pct">
-                    <Text style={{ color: '#10b981', fontWeight: 700, fontSize: 22 }}>{masteryPercent}%</Text>
-                    <Text style={{ color: '#64748b', fontSize: 13 }}>掌握率</Text>
-                  </div>
-                </div>
-
-                <div className="overview-metrics-grid">
-                  {overviewMetrics.map((metric) => (
-                    <div key={metric.label} className="overview-metric-tile">
-                      <div className="overview-metric-top">
-                        <div className={`db-icon-circle bg-${metric.accent}-50 text-${metric.accent}-500 overview-metric-icon`}>
-                          {metric.icon}
-                        </div>
-                        <Text className="overview-metric-label">{metric.label}</Text>
+                {!isMobile ? (
+                  <>
+                    <div className="overview-donut-panel">
+                      <div className="donut-area" style={{ minHeight: isMobile ? 140 : 180 }}>
+                        <DonutChart data={chartData} total={stats.totalWords} centerText="总词汇" size={isMobile ? 130 : 200} strokeWidth={isMobile ? 15 : 24} />
                       </div>
-                      <div className="overview-metric-value">
-                        {metric.value}
-                        {metric.suffix ? <span className="overview-metric-suffix">{metric.suffix}</span> : null}
+                      <div className="mastery-pct" style={{ marginTop: isMobile ? 4 : 8 }}>
+                        <Text style={{ color: '#10b981', fontWeight: 700, fontSize: isMobile ? 18 : 22 }}>{masteryPercent}%</Text>
+                        <Text style={{ color: '#64748b', fontSize: isMobile ? 12 : 13, marginLeft: 4 }}>掌握率</Text>
                       </div>
-                      <div className="overview-metric-support">{metric.support}</div>
                     </div>
-                  ))}
-                </div>
+
+                    <div className="overview-metrics-grid">
+                      {overviewMetrics.map((metric) => (
+                        <div key={metric.label} className="overview-metric-tile">
+                          <div className="overview-metric-top">
+                            <div className={`db-icon-circle bg-${metric.accent}-50 text-${metric.accent}-500 overview-metric-icon`}>
+                              {metric.icon}
+                            </div>
+                            <Text className="overview-metric-label">{metric.label}</Text>
+                          </div>
+                          <div className="overview-metric-value">
+                            {metric.value}
+                            {metric.suffix ? <span className="overview-metric-suffix">{metric.suffix}</span> : null}
+                          </div>
+                          <div className="overview-metric-support">{metric.support}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="overview-metrics-grid" style={{ width: '100%' }}>
+                    {/* Slot 1: Donut Chart representing Total Words */}
+                    <div className="overview-metric-tile" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '8px' }}>
+                      <DonutChart data={chartData} total={stats.totalWords} centerText="总词汇" size={90} strokeWidth={11} />
+                      <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, marginTop: 4 }}>
+                        {masteryPercent}% 掌握率
+                      </div>
+                    </div>
+                    {/* Slots 2, 3, 4: The remaining metrics (Mastered, Learning, Streak) */}
+                    {overviewMetrics.filter(m => m.label !== '总词汇').map((metric) => (
+                      <div key={metric.label} className="overview-metric-tile">
+                        <div className="overview-metric-top">
+                          <div className={`db-icon-circle bg-${metric.accent}-50 text-${metric.accent}-500 overview-metric-icon`}>
+                            {metric.icon}
+                          </div>
+                          <Text className="overview-metric-label">{metric.label}</Text>
+                        </div>
+                        <div className="overview-metric-value">
+                          {metric.value}
+                          {metric.suffix ? <span className="overview-metric-suffix">{metric.suffix}</span> : null}
+                        </div>
+                        <div className="overview-metric-support">{metric.support}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="overview-foot">
@@ -834,6 +857,20 @@ const bentoCss = `
   }
   .overview-layout {
     grid-template-columns: 1fr;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 18px;
+    background: rgba(248, 250, 252, 0.78);
+    padding: 16px;
+    gap: 16px;
+  }
+  .overview-donut-panel {
+    border: none !important;
+    background: transparent !important;
+    min-height: auto !important;
+    padding: 0 !important;
+  }
+  .overview-card {
+    height: auto !important;
   }
 }
 @media (max-width: 820px) {
@@ -846,7 +883,12 @@ const bentoCss = `
     padding-bottom: 24px;
   }
   .overview-metrics-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .overview-metric-tile {
+    padding: 10px !important;
+    min-height: auto !important;
   }
   .hero-buttons {
     flex-direction: column;
@@ -864,6 +906,63 @@ const bentoCss = `
   }
   .chapter-progress-side {
     grid-template-columns: 48px 1fr;
+  }
+  /* Mobile Font Size Tweaks */
+  .bento-header h2.ant-typography {
+    font-size: 20px !important;
+  }
+  .bento-header span.ant-typography {
+    font-size: 13px !important;
+  }
+  .hero-action-card h2.ant-typography {
+    font-size: 20px !important;
+  }
+  .hero-action-card span.ant-typography {
+    font-size: 13px !important;
+  }
+  .btn-hero-primary,
+  .btn-hero-secondary {
+    font-size: 14px !important;
+    padding: 10px 20px !important;
+  }
+  .overview-metric-label {
+    font-size: 13px !important;
+  }
+  .overview-metric-value {
+    font-size: 24px !important;
+  }
+  .overview-metric-suffix {
+    font-size: 12px !important;
+  }
+  .overview-metric-support {
+    font-size: 11px !important;
+  }
+  .chapter-progress-title {
+    font-size: 13px !important;
+  }
+  .chapter-progress-meta {
+    font-size: 11px !important;
+  }
+  .chapter-progress-percent {
+    font-size: 13px !important;
+  }
+  .leaderboard-head h3.ant-typography {
+    font-size: 16px !important;
+  }
+  .leaderboard-head span.ant-typography {
+    font-size: 12px !important;
+  }
+  .leaderboard-row span.ant-typography {
+    font-size: 12px !important;
+  }
+  .leaderboard-role-badge {
+    font-size: 10px !important;
+  }
+  .score-value {
+    font-size: 13px !important;
+  }
+  .score-label {
+    font-size: 10px !important;
   }
 }
 `;

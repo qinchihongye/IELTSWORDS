@@ -374,34 +374,34 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
               }}
             >
               <div style={{ 
-                padding: isMobile ? '8px 6px 12px' : 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 40px)', 
-                overflowY: 'auto', 
-                flex: 1, 
-                minHeight: 0 
+                padding: isMobile ? '0px 6px 12px' : 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 40px)',
+                overflowY: 'auto',
+                flex: 1,
+                minHeight: 0
               }} className="custom-scroll">
-                
+
                 {/* 顶部：视觉锚点 + 状态切换区 */}
-                <div style={{ 
-                  display: 'flex', 
+                <div style={{
+                  display: 'flex',
                   flexDirection: 'row',
-                  justifyContent: 'space-between', 
+                  justifyContent: 'space-between',
                   alignItems: 'center',
                   gap: 12,
-                  marginBottom: 24 
+                  marginBottom: isMobile ? 12 : 24
                 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                    <div style={{ fontSize: 'clamp(20px, 4vw, 24px)', fontWeight: 800, color: '#374151', letterSpacing: '-0.5px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: isMobile ? '18px' : 'clamp(20px, 4vw, 24px)', fontWeight: 800, color: '#374151', letterSpacing: '-0.5px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {word.word}
                     </div>
                   </div>
-                  
+
                   {/* Status Inline */}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: isMobile ? 12 : 8, 
-                    alignItems: 'center', 
-                    background: '#f9fafb', 
-                    padding: isMobile ? '6px 12px' : '4px 8px', 
+                  <div style={{
+                    display: 'flex',
+                    gap: isMobile ? 6 : 8,
+                    alignItems: 'center',
+                    background: '#f9fafb',
+                    padding: isMobile ? '4px 6px' : '4px 8px',
                     borderRadius: '999px',
                     flexShrink: 0
                   }} onClick={e => e.stopPropagation()}>
@@ -415,12 +415,12 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                         key={btn.title}
                         onClick={(e) => handleStatusChange(e, btn.status, btn.quality)}
                         style={{
-                          width: isMobile ? 32 : 24, height: isMobile ? 32 : 24, borderRadius: '50%',
+                          width: isMobile ? 26 : 24, height: isMobile ? 26 : 24, borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer', transition: 'all 0.2s',
                           background: 'transparent',
                           color: '#9ca3af',
-                          fontSize: isMobile ? '13px' : '11px', fontWeight: 600
+                          fontSize: isMobile ? '12px' : '11px', fontWeight: 600
                         }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = btn.color; e.currentTarget.style.color = '#fff'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}
@@ -434,15 +434,15 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
 
                 {/* 辅助信息结构 (Details) */}
                 {hasDetails ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} onClick={e => e.stopPropagation()}>
-                    
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '8px' : '20px' }} onClick={e => e.stopPropagation()}>
+
                     {word.roots_affixes && (
-                      <div style={{ background: '#eff6ff', borderRadius: '16px', border: '1px solid #bfdbfe', padding: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#2563eb' }}>
-                          <PartitionOutlined style={{ fontSize: '16px' }} />
-                          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.5px' }}>ROOTS & AFFIXES</span>
+                      <div style={{ background: '#eff6ff', borderRadius: isMobile ? '12px' : '16px', border: '1px solid #bfdbfe', padding: isMobile ? '8px 10px' : '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 8, marginBottom: isMobile ? 4 : 8, color: '#2563eb' }}>
+                          <PartitionOutlined style={{ fontSize: isMobile ? '13px' : '16px' }} />
+                          <span style={{ fontSize: isMobile ? '11px' : '13px', fontWeight: 700, letterSpacing: '0.5px' }}>ROOTS & AFFIXES</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '4px' : '6px' }}>
                           {(() => {
                             let parsedLines = [];
                             try {
@@ -458,29 +458,32 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                                 return { raw: line.trim() };
                               });
                             }
-                            
+
                             const maxRootLen = Math.max(...parsedLines.map(p => (p.root || '').length));
-                            const rootColWidth = Math.max(80, Math.min(maxRootLen * 11 + 16, 180));
+                            const rootColWidth = isMobile
+                              ? Math.max(50, Math.min(maxRootLen * 8 + 6, 110))
+                              : Math.max(80, Math.min(maxRootLen * 11 + 16, 180));
 
                             return parsedLines.map((item, idx) => {
                               if (!item.root && item.raw) {
                                 return <div key={idx} style={{ fontSize: '15px', color: '#1e3a8a', lineHeight: 1.5 }}>{item.raw}</div>;
                               }
                               return (
-                                <div key={idx} style={{ 
+                                <div key={idx} style={{
                                   display: 'flex', alignItems: 'baseline',
                                   background: 'rgba(37, 99, 235, 0.05)',
-                                  padding: '7px 12px',
-                                  borderRadius: '10px'
+                                  padding: isMobile ? '3px 6px' : '7px 12px',
+                                  borderRadius: isMobile ? '4px' : '10px',
+                                  gap: isMobile ? 6 : 12
                                 }}>
-                                  <span style={{ 
-                                    fontWeight: 700, color: '#1e40af', fontSize: '15px', 
+                                  <span style={{
+                                    fontWeight: 700, color: '#1e40af', fontSize: isMobile ? '12px' : '15px',
                                     fontFamily: 'serif', letterSpacing: '0.3px',
                                     width: rootColWidth, minWidth: rootColWidth, flexShrink: 0
                                   }}>
                                     {item.root}
                                   </span>
-                                  <span style={{ color: '#3b82f6', fontSize: '14px', lineHeight: 1.5 }}>
+                                  <span style={{ color: '#3b82f6', fontSize: isMobile ? '11px' : '14px', lineHeight: 1.3 }}>
                                     {item.meaning}
                                   </span>
                                 </div>
@@ -492,12 +495,12 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                     )}
 
                     {word.derivatives && (
-                      <div style={{ background: '#f0fdf4', borderRadius: '16px', border: '1px solid #bbf7d0', padding: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#16a34a' }}>
-                          <BranchesOutlined style={{ fontSize: '16px' }} />
-                          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.5px' }}>DERIVATIVES</span>
+                      <div style={{ background: '#f0fdf4', borderRadius: isMobile ? '12px' : '16px', border: '1px solid #bbf7d0', padding: isMobile ? '8px 10px' : '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 8, marginBottom: isMobile ? 4 : 8, color: '#16a34a' }}>
+                          <BranchesOutlined style={{ fontSize: isMobile ? '13px' : '16px' }} />
+                          <span style={{ fontSize: isMobile ? '11px' : '13px', fontWeight: 700, letterSpacing: '0.5px' }}>DERIVATIVES</span>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '4px' : '6px' }}>
                           {(() => {
                             let parsedLines = [];
                             try {
@@ -506,40 +509,43 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                                 parsedLines = jsonObj.map(item => ({ word: item.key, meaning: item.value }));
                               }
                             } catch (e) {
-                              const lines = (word.derivatives.includes('\n') 
-                                ? word.derivatives.split('\n') 
+                              const lines = (word.derivatives.includes('\n')
+                                ? word.derivatives.split('\n')
                                 : word.derivatives.split(/[,;]\s*(?=[a-zA-Z-]+\s*\|)/)
                               ).filter(Boolean);
-                              
+
                               parsedLines = lines.map(line => {
                                 const parts = line.split('|');
                                 if (parts.length < 2) return { raw: line.trim() };
                                 return { word: parts[0].trim(), meaning: parts.slice(1).join('|').trim() };
                               });
                             }
-                            
+
                             const maxWordLen = Math.max(...parsedLines.map(p => (p.word || '').length));
-                            const wordColWidth = Math.max(100, Math.min(maxWordLen * 10 + 16, 200));
+                            const wordColWidth = isMobile
+                              ? Math.max(70, Math.min(maxWordLen * 8 + 6, 130))
+                              : Math.max(100, Math.min(maxWordLen * 10 + 16, 200));
 
                             return parsedLines.map((item, idx) => {
                               if (!item.word && item.raw) {
                                 return <div key={idx} style={{ fontSize: '15px', color: '#14532d', lineHeight: 1.5 }}>{item.raw}</div>;
                               }
                               return (
-                                <div key={idx} style={{ 
+                                <div key={idx} style={{
                                   display: 'flex', alignItems: 'baseline',
                                   background: 'rgba(22, 163, 74, 0.06)',
-                                  padding: '7px 12px',
-                                  borderRadius: '10px'
+                                  padding: isMobile ? '3px 6px' : '7px 12px',
+                                  borderRadius: isMobile ? '4px' : '10px',
+                                  gap: isMobile ? 6 : 12
                                 }}>
-                                  <span style={{ 
-                                    fontWeight: 700, color: '#166534', fontSize: '15px', 
+                                  <span style={{
+                                    fontWeight: 700, color: '#166534', fontSize: isMobile ? '12px' : '15px',
                                     fontFamily: 'serif', letterSpacing: '0.3px',
                                     width: wordColWidth, minWidth: wordColWidth, flexShrink: 0
                                   }}>
                                     {item.word}
                                   </span>
-                                  <span style={{ color: '#15803d', fontSize: '14px', lineHeight: 1.5 }}>
+                                  <span style={{ color: '#15803d', fontSize: isMobile ? '11px' : '14px', lineHeight: 1.3 }}>
                                     {item.meaning}
                                   </span>
                                 </div>

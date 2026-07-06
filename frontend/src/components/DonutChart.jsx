@@ -1,9 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const DonutChart = ({ data, total, centerText }) => {
-  const size = 200;
-  const strokeWidth = 24;
+const DonutChart = ({ data, total, centerText, size = 200, strokeWidth = 24 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const chartSegments = data.reduce((segments, item) => {
@@ -48,8 +46,8 @@ const DonutChart = ({ data, total, centerText }) => {
         })}
       </svg>
       <div style={{ position: 'absolute', textAlign: 'center' }}>
-        <div style={{ fontSize: 32, fontWeight: 800, color: '#111827', lineHeight: 1 }}>{total}</div>
-        <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4, fontWeight: 500 }}>{centerText}</div>
+        <div style={{ fontSize: Math.round(size * 0.16), fontWeight: 800, color: '#111827', lineHeight: 1 }}>{total}</div>
+        <div style={{ fontSize: Math.max(10, Math.round(size * 0.065)), color: '#6b7280', marginTop: 4, fontWeight: 500 }}>{centerText}</div>
       </div>
     </div>
   );
