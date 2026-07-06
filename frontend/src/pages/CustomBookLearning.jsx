@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Card, Empty, Progress, Slider, Spin, Tag, Typography, message } from 'antd';
+import { Button, Card, Empty, Progress, Slider, Spin, Tag, Typography, message, Grid } from 'antd';
 import { ArrowLeftOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import apiClient from '../api/client';
@@ -31,6 +31,8 @@ const statusMeta = {
 const CustomBookLearning = () => {
   const navigate = useNavigate();
   const { bookId, groupId } = useParams();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const { lensRadius, setLensRadius } = useLearning();
   const { user } = useAuth();
 
@@ -276,16 +278,18 @@ const CustomBookLearning = () => {
                 </Tag>
               </div>
 
-              <div>
-                <Text style={{ display: 'block', color: '#64748b', marginBottom: 12 }}>单词卡圆圈大小</Text>
-                <Slider
-                  min={70}
-                  max={220}
-                  value={lensRadius}
-                  onChange={setLensRadius}
-                />
-                <Text style={{ color: '#94a3b8', fontSize: 12 }}>{lensRadius}px</Text>
-              </div>
+              {!isMobile && (
+                <div>
+                  <Text style={{ display: 'block', color: '#64748b', marginBottom: 12 }}>单词卡圆圈大小</Text>
+                  <Slider
+                    min={70}
+                    max={220}
+                    value={lensRadius}
+                    onChange={setLensRadius}
+                  />
+                  <Text style={{ color: '#94a3b8', fontSize: 12 }}>{lensRadius}px</Text>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <Button

@@ -4,7 +4,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Button, Card, Progress, Slider, Spin, Switch, Typography, message } from 'antd';
+import { Button, Card, Progress, Slider, Spin, Switch, Typography, message, Grid } from 'antd';
 import { ArrowLeftOutlined, LeftOutlined, MessageOutlined, ReloadOutlined, RightOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLearning } from '../context/LearningContext';
@@ -27,6 +27,8 @@ const getGroupContentKey = (group) => (
 const Learning = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const {
     mode,
     setMode,
@@ -464,75 +466,129 @@ const Learning = () => {
 
   return (
     <motion.div className="page-wrapper" style={{ maxWidth: 1200, margin: '0 auto', height: "100%" }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 24 }}>
-      <div className="page-subheader" style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div className="learning-header__main" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
-          <div className="learning-header__copy" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div className="page-subheader" style={{ 
+        marginBottom: 24, 
+        display: "flex", 
+        flexDirection: isMobile ? 'column' : 'row', 
+        justifyContent: "space-between", 
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? 12 : 24
+      }}>
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* 第一行：第一章 */}
             {activeMode === 'sequential' && (
               <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}>
                 {titleText}
               </div>
             )}
-            <Text style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500 }}>{subtitleText}</Text>
-          </div>
-          
-          <div 
-            onClick={handleBackNavigation}
-            style={{ 
-              display: 'flex', alignItems: 'center', gap: '6px', 
-              color: '#9ca3af', cursor: 'pointer', fontSize: '13px', fontWeight: 600, 
-              transition: 'color 0.2s' 
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = '#4f46e5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
-          >
-            <ArrowLeftOutlined />
-            <span>
-              {activeMode === 'sequential'
-                ? '返回本组单词列表'
-                : activeMode === 'mistake-book'
-                  ? '返回错词本'
-                  : '返回首页'}
-            </span>
-          </div>
-        </div>
+            
+            {/* 第二行：group */}
+            <Text style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>{subtitleText}</Text>
+            
+            {/* 第三行：换一组/换单词按钮（移动端隐藏 问 AI 和 进度条） */}
+            {(activeMode === 'random-group' || activeMode === 'random-word') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  {activeMode === 'random-group' && (
+                    <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
+                      换一组
+                    </Button>
+                  )}
+                  {activeMode === 'random-word' && (
+                    <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
+                      换一个单词
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
 
-        <div className="learning-header__actions">
-          <Button
-            icon={<MessageOutlined />}
-            onClick={() => {
-              void openWithPrompt('请结合我当前正在看的这个单词，帮我快速讲透它，并顺手给一个记忆技巧。', {
-                context: learningChatContext,
-              });
-            }}
-            className="learning-secondary-action"
-          >
-            问 AI
-          </Button>
-          {activeMode === 'sequential' && (
-            <div className="learning-auto-advance" style={{ display: 'none' }}>
-              <span className="learning-auto-advance__label">自动跳词</span>
-              <Switch
-                checked={autoAdvanceSequential}
-                onChange={setAutoAdvanceSequential}
-              />
+            {/* 第四行：返回 */}
+            <div 
+              onClick={handleBackNavigation}
+              style={{ 
+                display: 'flex', alignItems: 'center', gap: '6px', 
+                color: '#9ca3af', cursor: 'pointer', fontSize: '13px', fontWeight: 600, 
+                transition: 'color 0.2s',
+                marginTop: 6
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#4f46e5'}
+              onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+            >
+              <ArrowLeftOutlined />
+              <span>
+                {activeMode === 'sequential'
+                  ? '返回本组单词列表'
+                  : activeMode === 'mistake-book'
+                    ? '返回错词本'
+                    : '返回首页'}
+              </span>
             </div>
-          )}
-          {activeMode === 'random-group' && (
-            <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action">
-              换一组
-            </Button>
-          )}
-          {activeMode === 'random-word' && (
-            <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action">
-              换一个单词
-            </Button>
-          )}
-          {isListMode && (
-            <div className="learning-progress-wrap">
-              <Progress percent={progressPercent} strokeColor="#c96d47" trailColor="#e8dccd" />
+          </div>
+        ) : (
+          <>
+            <div className="learning-header__main" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
+              <div className="learning-header__copy" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {activeMode === 'sequential' && (
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}>
+                    {titleText}
+                  </div>
+                )}
+                <Text style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500 }}>{subtitleText}</Text>
+              </div>
+              
+              <div 
+                onClick={handleBackNavigation}
+                style={{ 
+                  display: 'flex', alignItems: 'center', gap: '6px', 
+                  color: '#9ca3af', cursor: 'pointer', fontSize: '13px', fontWeight: 600, 
+                  transition: 'color 0.2s' 
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = '#4f46e5'}
+                onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+              >
+                <ArrowLeftOutlined />
+                <span>
+                  {activeMode === 'sequential'
+                    ? '返回本组单词列表'
+                    : activeMode === 'mistake-book'
+                      ? '返回错词本'
+                      : '返回首页'}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="learning-header__actions">
+              <Button
+                icon={<MessageOutlined />}
+                onClick={() => {
+                  void openWithPrompt('请结合我当前正在看的这个单词，帮我快速讲透它，并顺手给一个记忆技巧。', {
+                    context: learningChatContext,
+                  });
+                }}
+                className="learning-secondary-action"
+              >
+                问 AI
+              </Button>
+              {activeMode === 'random-group' && (
+                <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action">
+                  换一组
+                </Button>
+              )}
+              {activeMode === 'random-word' && (
+                <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action">
+                  换一个单词
+                </Button>
+              )}
+              {isListMode && (
+                <div className="learning-progress-wrap">
+                  <Progress percent={progressPercent} strokeColor="#c96d47" trailColor="#e8dccd" />
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="page-content" style={{ position: 'relative' }}>
@@ -553,18 +609,20 @@ const Learning = () => {
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>大小</span>
-                  <Slider
-                    min={30}
-                    max={300}
-                    step={10}
-                    value={lensRadius}
-                    onChange={setLensRadius}
-                    style={{ width: 72, margin: 0 }}
-                    tooltip={{ formatter: (val) => `${val}px` }}
-                  />
-                </div>
+                {!isMobile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>大小</span>
+                    <Slider
+                      min={30}
+                      max={300}
+                      step={10}
+                      value={lensRadius}
+                      onChange={setLensRadius}
+                      style={{ width: 72, margin: 0 }}
+                      tooltip={{ formatter: (val) => `${val}px` }}
+                    />
+                  </div>
+                )}
                 {currentWord && (
                   <Button
                     size="small"

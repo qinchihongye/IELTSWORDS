@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Image, Modal, Spin, Button, Typography, Slider } from 'antd';
+import { Card, Image, Modal, Spin, Button, Typography, Slider, Grid } from 'antd';
 import { LeftOutlined, RightOutlined, PictureOutlined, SearchOutlined, BulbOutlined } from '@ant-design/icons';
 import { motion, useMotionValue, useSpring, useMotionTemplate } from 'framer-motion';
 import apiClient from '../api/client';
@@ -258,6 +258,8 @@ const ImageGallery = ({ images = [], currentWord, emptyMode }) => {
   const [isHovered, setIsHovered] = useState(false);
   const { lensRadius, magnifierScale, setMagnifierScale, spotlightOpacity, setSpotlightOpacity } = useLearning();
   const [isMagnifierMode, setIsMagnifierMode] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const frameRef = useRef(null);
 
   // X-Ray Lens Animation Values
@@ -499,28 +501,30 @@ const ImageGallery = ({ images = [], currentWord, emptyMode }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* Control bar for sidebar (Parallel to WordCard toolbar) */}
-      <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minWidth: 0 }}>
-        <Button
-          type="text"
-          size="small"
-          onClick={() => setIsMagnifierMode(!isMagnifierMode)}
-          style={{ 
-            color: isMagnifierMode ? '#6366f1' : '#6b7280',
-            fontWeight: 600,
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            paddingLeft: 0,
-            minWidth: 0,
-            flexShrink: 1
-          }}
-        >
-          {isMagnifierMode ? <SearchOutlined /> : <BulbOutlined />}
-          {isMagnifierMode ? `放大镜 (${magnifierScale.toFixed(1)}x)` : '聚光灯'}
-        </Button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, minWidth: 0, flexShrink: 0 }}>
-          {isMagnifierMode ? (
+      <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'space-between', gap: 12, minWidth: 0 }}>
+        {!isMobile && (
+          <Button
+            type="text"
+            size="small"
+            onClick={() => setIsMagnifierMode(!isMagnifierMode)}
+            style={{ 
+              color: isMagnifierMode ? '#6366f1' : '#6b7280',
+              fontWeight: 600,
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              paddingLeft: 0,
+              minWidth: 0,
+              flexShrink: 1
+            }}
+          >
+            {isMagnifierMode ? <SearchOutlined /> : <BulbOutlined />}
+            {isMagnifierMode ? `放大镜 (${magnifierScale.toFixed(1)}x)` : '聚光灯'}
+          </Button>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: 10, minWidth: 0, flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
+          {!isMobile && (isMagnifierMode ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>倍数</span>
               <Slider
@@ -546,7 +550,7 @@ const ImageGallery = ({ images = [], currentWord, emptyMode }) => {
                 tooltip={{ formatter: (val) => `${val}%` }}
               />
             </div>
-          )}
+          ))}
           <span
             style={{
               fontSize: '12px',

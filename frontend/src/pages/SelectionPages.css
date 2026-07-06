@@ -589,3 +589,28 @@
 .sleek-chapter-header-wrap .sleek-chapter-title {
   margin: 0;
 }
+
+/* 移动端全局字体优化 */
+@media screen and (max-width: 768px) {
+  .ant-typography {
+    font-size: 13px !important;
+  }
+  .ant-typography h1, h1.ant-typography {
+    font-size: 20px !important;
+  }
+  .ant-typography h2, h2.ant-typography {
+    font-size: 18px !important;
+  }
+  .ant-typography h3, h3.ant-typography {
+    font-size: 16px !important;
+  }
+  .ant-typography h4, h4.ant-typography {
+    font-size: 14px !important;
+  }
+  .ant-typography h5, h5.ant-typography {
+    font-size: 13px !important;
+  }
+  .ant-btn {
+    font-size: 13px !important;
+  }
+}

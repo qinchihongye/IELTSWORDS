@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Card, Typography, Button, Tag, message } from 'antd';
+import { Card, Typography, Button, Tag, message, Grid } from 'antd';
 import { SoundOutlined, SyncOutlined, BookOutlined, ReadOutlined, CloseCircleOutlined, ClockCircleOutlined, CheckCircleOutlined, LeftOutlined, RightOutlined, PartitionOutlined, BranchesOutlined, LinkOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence, useMotionValue, useSpring, useMotionTemplate } from 'framer-motion';
 import { useLearning } from '../context/LearningContext';
@@ -15,6 +15,8 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
   const [statusLoading, setStatusLoading] = useState(false);
   const [hoveredStatus, setHoveredStatus] = useState(null);
   const [isCardHovered, setIsCardHovered] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
   const { lensRadius } = useLearning();
   const touchStartRef = useRef(null);
   const cardRef = useRef(null);
@@ -317,8 +319,9 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
               {/* Center: Word and Phonetics */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <h1 style={{ 
-                  fontSize: '84px', fontWeight: 800, color: '#111827', 
-                  margin: '0 0 16px 0', letterSpacing: '-2.5px', lineHeight: 1.1
+                  fontSize: 'clamp(32px, 9vw, 76px)', fontWeight: 800, color: '#111827', 
+                  margin: '0 0 16px 0', letterSpacing: 'clamp(-1.5px, -0.3vw, -0.5px)', lineHeight: 1.1,
+                  textAlign: 'center', wordBreak: 'break-word', width: '100%', padding: '0 12px'
                 }}>
                   {word.word}
                 </h1>
@@ -364,24 +367,44 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                 borderRadius: '24px',
                 background: '#ffffff',
                 boxShadow: '0 24px 60px rgba(0,0,0,0.08)',
-                height: '480px',
+                height: isMobile ? '100%' : '480px',
                 display: 'flex',
                 flexDirection: 'column',
                 position: 'relative'
               }}
             >
-              <div style={{ padding: '32px 40px', overflowY: 'auto', maxHeight: 'calc(80vh)' }} className="custom-scroll">
+              <div style={{ 
+                padding: isMobile ? '8px 6px 12px' : 'clamp(20px, 4vw, 32px) clamp(16px, 4vw, 40px)', 
+                overflowY: 'auto', 
+                flex: 1, 
+                minHeight: 0 
+              }} className="custom-scroll">
                 
                 {/* 顶部：视觉锚点 + 状态切换区 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ fontSize: '24px', fontWeight: 800, color: '#374151', letterSpacing: '-0.5px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'row',
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  gap: 12,
+                  marginBottom: 24 
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <div style={{ fontSize: 'clamp(20px, 4vw, 24px)', fontWeight: 800, color: '#374151', letterSpacing: '-0.5px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {word.word}
                     </div>
                   </div>
                   
                   {/* Status Inline */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#f9fafb', padding: '4px 8px', borderRadius: '999px' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: isMobile ? 12 : 8, 
+                    alignItems: 'center', 
+                    background: '#f9fafb', 
+                    padding: isMobile ? '6px 12px' : '4px 8px', 
+                    borderRadius: '999px',
+                    flexShrink: 0
+                  }} onClick={e => e.stopPropagation()}>
                     {[
                       { status: 'learning', quality: 0, color: '#f43f5e', title: '忘' },
                       { status: 'learning', quality: 3, color: '#f59e0b', title: '糊' },
@@ -392,12 +415,12 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                         key={btn.title}
                         onClick={(e) => handleStatusChange(e, btn.status, btn.quality)}
                         style={{
-                          width: 24, height: 24, borderRadius: '50%',
+                          width: isMobile ? 32 : 24, height: isMobile ? 32 : 24, borderRadius: '50%',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer', transition: 'all 0.2s',
                           background: 'transparent',
                           color: '#9ca3af',
-                          fontSize: '11px', fontWeight: 600
+                          fontSize: isMobile ? '13px' : '11px', fontWeight: 600
                         }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = btn.color; e.currentTarget.style.color = '#fff'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}

@@ -446,7 +446,8 @@ const MainLayout = () => {
         <Content style={{ 
           padding: isMobile ? '12px' : '24px 32px',
           position: 'relative',
-          overflowY: 'auto'
+          overflowY: 'auto',
+          overflowX: 'hidden'
         }}>
           <Outlet />
           <AIChatWidget />

@@ -40,48 +40,49 @@ const ExampleSentenceCard = ({ word }) => {
         width: '100%',
         marginTop: 24,
       }}
-      bodyStyle={{ padding: '32px 40px' }}
+      bodyStyle={{ padding: 'clamp(16px, 4vw, 32px) clamp(16px, 5vw, 40px)' }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 4vw, 32px)' }}>
         {/* === Example Sentence Section === */}
         {exampleSentence && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                 <Text style={{ color: '#6366f1', fontWeight: 700, fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                   <ReadOutlined style={{ marginRight: 6 }} /> Example Sentence
-                 </Text>
-              </div>
-              
-              <div style={{ borderLeft: '3px solid #e5e7eb', paddingLeft: '24px', margin: '16px 0 0 0' }}>
-                <p style={{ 
-                  fontSize: '24px', color: '#111827', fontStyle: 'italic', 
-                  fontFamily: 'serif', margin: '0 0 12px 0', lineHeight: 1.5 
-                }}>
-                  "{exampleSentence}"
-                </p>
-                {word.sentenceMeaning && (
-                  <p style={{ margin: 0, fontSize: '15px', color: '#6b7280', fontWeight: 500 }}>
-                    {word.sentenceMeaning}
-                  </p>
-                )}
-              </div>
-            </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+               <Text style={{ color: '#6366f1', fontWeight: 700, fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
+                 <ReadOutlined style={{ marginRight: 6 }} /> Example Sentence
+               </Text>
 
-            <Button
-              shape="circle"
-              size="large"
-              icon={<SoundOutlined />}
-              onClick={playSentenceAudio}
-              style={{ 
-                color: '#6366f1', 
-                borderColor: 'rgba(99, 102, 241, 0.3)', 
-                background: 'rgba(99, 102, 241, 0.05)',
-                boxShadow: 'none',
-                marginLeft: 32,
-                marginTop: 8
-              }}
-            />
+               <Button
+                 shape="circle"
+                 icon={<SoundOutlined style={{ fontSize: '13px' }} />}
+                 onClick={playSentenceAudio}
+                 style={{ 
+                   color: '#6366f1', 
+                   borderColor: 'rgba(99, 102, 241, 0.3)', 
+                   background: 'rgba(99, 102, 241, 0.05)',
+                   boxShadow: 'none',
+                   display: 'flex',
+                   alignItems: 'center',
+                   justifyContent: 'center',
+                   width: '28px',
+                   height: '28px',
+                   flexShrink: 0
+                 }}
+               />
+            </div>
+            
+            <div style={{ borderLeft: '3px solid #e5e7eb', paddingLeft: 'clamp(12px, 3vw, 24px)', margin: '16px 0 0 0' }}>
+              <p style={{ 
+                fontSize: 'clamp(16px, 3.5vw + 4px, 24px)', color: '#111827', fontStyle: 'italic', 
+                fontFamily: 'serif', margin: '0 0 12px 0', lineHeight: 1.5 
+              }}>
+                "{exampleSentence}"
+              </p>
+              {word.sentenceMeaning && (
+                <p style={{ margin: 0, fontSize: 'clamp(13px, 2vw + 6px, 15px)', color: '#6b7280', fontWeight: 500 }}>
+                  {word.sentenceMeaning}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -94,9 +95,9 @@ const ExampleSentenceCard = ({ word }) => {
                </Text>
             </div>
             
-            <div style={{ borderLeft: '3px solid #ede9fe', paddingLeft: '24px', margin: '16px 0 0 0' }}>
+            <div style={{ borderLeft: '3px solid #ede9fe', paddingLeft: 'clamp(12px, 3vw, 24px)', margin: '16px 0 0 0' }}>
               <p style={{ 
-                fontSize: '16px', color: '#4c1d95', fontWeight: 500, margin: 0, lineHeight: 1.6 
+                fontSize: 'clamp(13px, 2vw + 6px, 16px)', color: '#4c1d95', fontWeight: 500, margin: 0, lineHeight: 1.6 
               }}>
                 {candidateWords}
               </p>
