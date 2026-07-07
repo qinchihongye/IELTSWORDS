@@ -263,6 +263,7 @@ const SuperAdmin = () => {
           dataSource={adminUsers}
           loading={loading}
           pagination={false}
+          scroll={{ x: 'max-content' }}
         />
       </section>
     </div>

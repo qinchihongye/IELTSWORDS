@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Card, Typography, Button, Spin, Collapse, Badge, Tooltip, Grid } from 'antd';
+import { Card, Typography, Button, Spin, Collapse, Badge, Tooltip, Grid, Drawer } from 'antd';
 import { BookOutlined, RightOutlined, ArrowRightOutlined, VerticalAlignTopOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useLearning } from '../context/LearningContext';
@@ -60,8 +60,12 @@ const loadLastPosition = () => {
 
 const SequentialSelect = () => {
   const navigate = useNavigate();
-  const screens = Grid.useBreakpoint();
-  const isMobile = !screens.md;
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const {
     fetchChapters,
     fetchGroupsByChapter,
@@ -93,6 +97,7 @@ const SequentialSelect = () => {
   const [progressMap, setProgressMap] = useState({});
   const [progressMapKey, setProgressMapKey] = useState(null);
   const [activeWordId, setActiveWordId] = useState(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   // 2. Handle Chapter Expansion (Fetch Groups)
   const handleGroupSelect = useCallback(async (chapter, group) => {
@@ -303,7 +308,201 @@ const SequentialSelect = () => {
   }, [currentChapter?.chapterNo, currentGroup?.chapterNo, currentGroup?.groupId, progressMap, words]);
 
   // 4. Start Learning
-  const handleStartLearning = (index = 0) => {
+    // Helper to render curriculum explorer
+  const renderCurriculum = () => {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '0px' : '12px' }} className="custom-scroll">
+        {loadingChapters ? (
+          <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>
+        ) : (
+          <Collapse 
+            accordion
+            ghost 
+            activeKey={expandedKeys} 
+            onChange={handleExpand}
+            expandIcon={({ isActive }) => <RightOutlined rotate={isActive ? 90 : 0} style={{ color: '#9ca3af' }}/>}
+          >
+            {chapters.map(chapter => (
+              <Panel 
+                key={String(chapter.chapterNo)} 
+                header={
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <Text strong style={{ color: '#1f2937', fontSize: 15 }}>{formatChapterTitle(chapter.chapterNo, chapter.chapterName)}</Text>
+                    <Badge count={chapter.groupCount} style={{ backgroundColor: 'rgba(17, 24, 39, 0.05)', color: '#4b5563', boxShadow: 'none' }} />
+                  </div>
+                }
+              >
+                {loadingPanel === chapter.chapterNo ? (
+                  <div style={{ padding: 16, textAlign: 'center' }}><Spin size="small" /></div>
+                ) : (
+                  <div style={{ 
+                    border: '2px dashed rgba(156, 163, 175, 0.3)',
+                    borderRadius: '16px',
+                    background: 'rgba(255, 255, 255, 0.4)',
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    {/* Scrollable group list */}
+                    <div
+                      ref={el => { groupListRefs.current[chapter.chapterNo] = el; }}
+                      style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: 6,
+                        height: isMobile ? '210px' : '174px',
+                        overflowY: 'auto', 
+                        padding: '8px',
+                      }}
+                      className="custom-scroll"
+                    >
+                      {(chapterGroups[chapter.chapterNo] || []).map((group, groupIndex, groups) => {
+                        const isActive = currentGroup?.groupId === group.groupId;
+                        const isCompleted = isGroupCompleted(group);
+                        const isUnlocked = isGroupUnlocked(groups, groupIndex);
+                        const progressPercent = Math.min(100, Math.round(((group.learnedCount || 0) / Math.max(1, group.wordCount)) * 100));
+                        const groupNode = (
+                          <div 
+                            key={group.groupId}
+                            ref={isActive ? (el => {
+                              if (el && !el.dataset.scrolled) {
+                                setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 100);
+                                el.dataset.scrolled = "true";
+                              }
+                            }) : null}
+                            onClick={() => {
+                              if (isUnlocked) {
+                                handleGroupSelect(chapter, group);
+                                setDrawerVisible(false); // Auto-close drawer on mobile
+                              }
+                            }}
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: 12,
+                              background: isActive ? 'rgba(243, 244, 246, 0.8)' : 'transparent',
+                              border: isActive ? '1px solid rgba(209, 213, 219, 0.6)' : '1px solid transparent',
+                              cursor: isUnlocked ? 'pointer' : 'not-allowed',
+                              transition: 'all 0.2s',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexShrink: 0,
+                              opacity: isUnlocked ? 1 : 0.5
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isActive && isUnlocked) e.currentTarget.style.background = 'rgba(255,255,255,0.7)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isActive) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: isActive ? 700 : 500, color: isActive ? '#111827' : '#4b5563' }}>
+                                {group.groupId}
+                              </div>
+                              {group.groupTheme && group.groupTheme.length > 20 ? (
+                                <Tooltip title={group.groupTheme}>
+                                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                    {`${group.groupTheme.slice(0, 20)}...`}
+                                  </div>
+                                </Tooltip>
+                              ) : (
+                                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                  {group.groupTheme}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                              <Text type="secondary" style={{ fontSize: 12, color: isActive ? '#6b7280' : '#9ca3af', fontWeight: 500, lineHeight: 1 }}>
+                                {isUnlocked ? `${group.wordCount} 词` : <><LockOutlined /> 待解锁</>}
+                              </Text>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: isActive ? 1 : 0.8 }}>
+                                <div style={{ width: 36, height: 4, background: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                                  <div style={{ 
+                                    width: `${progressPercent}%`, 
+                                    height: '100%', 
+                                    background: isCompleted ? '#10b981' : '#6366f1', 
+                                    borderRadius: 2 
+                                  }} />
+                                </div>
+                                <span style={{ 
+                                  fontSize: 10, 
+                                  color: isCompleted ? '#10b981' : '#6366f1', 
+                                  fontWeight: 700, 
+                                  minWidth: '24px', 
+                                  textAlign: 'right',
+                                  lineHeight: 1
+                                }}>
+                                  {progressPercent}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+
+                        return isUnlocked ? groupNode : (
+                          <Tooltip key={group.groupId} title="完成上一组后解锁；VIP 用户及以上可解锁全部 group。">
+                            {groupNode}
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                    {/* Back-to-top arrow */}
+                    {(chapterGroups[chapter.chapterNo] || []).length > 3 && (
+                      <div
+                        style={{
+                          position: 'sticky',
+                          bottom: 0,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          paddingTop: 4,
+                          paddingBottom: 6,
+                          background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.85) 60%)',
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        <button
+                          title="回到第一个 Group"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const el = groupListRefs.current[chapter.chapterNo];
+                            if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          style={{
+                            pointerEvents: 'auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '3px 12px',
+                            borderRadius: 20,
+                            border: '1px solid rgba(209, 213, 219, 0.6)',
+                            background: 'rgba(255,255,255,0.9)',
+                            color: '#4b5563',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(243,244,246,1)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.9)'; }}
+                        >
+                          <VerticalAlignTopOutlined style={{ fontSize: 13 }} />
+                          <span>回顶</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Panel>
+            ))}
+          </Collapse>
+        )}
+      </div>
+    );
+  };
+
+const handleStartLearning = (index = 0) => {
     if (words.length > 0) {
       setActiveWordId(words[index]?.id || null);
       selectWordAtIndex(index);
@@ -311,7 +510,7 @@ const SequentialSelect = () => {
     }
   };
 
-  return (
+    return (
     <motion.div 
       className="page-wrapper" 
       style={{ 
@@ -334,212 +533,45 @@ const SequentialSelect = () => {
         minHeight: 0,
         paddingBottom: isMobile ? 12 : 24
       }}>
-        {/* Left Pane: Explorer Tree (Original Glassy Box-in-Box layout) */}
-        <div style={{ 
-          width: isMobile ? '100%' : 340,
-          maxHeight: isMobile ? '46dvh' : undefined,
-          display: 'flex', 
-          flexDirection: 'column',
-          background: 'rgba(255, 255, 255, 0.5)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.8)',
-          borderRadius: 24,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
-          overflow: 'hidden'
-        }}>
-          <div style={{ padding: isMobile ? '12px 14px' : '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.4)' }}>
-            <Text strong style={{ color: '#4b5563', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>课程目录 Curriculum</Text>
+        {/* Left Pane: Explorer Tree (Shown only on Desktop) */}
+        {!isMobile && (
+          <div style={{ 
+            width: 340,
+            display: 'flex', 
+            flexDirection: 'column',
+            background: 'rgba(255, 255, 255, 0.5)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.8)',
+            borderRadius: 24,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.4)' }}>
+              <Text strong style={{ color: '#4b5563', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>课程目录 Curriculum</Text>
+            </div>
+            {renderCurriculum()}
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }} className="custom-scroll">
-            {loadingChapters ? (
-              <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>
-            ) : (
-              <Collapse 
-                accordion
-                ghost 
-                activeKey={expandedKeys} 
-                onChange={handleExpand}
-                expandIcon={({ isActive }) => <RightOutlined rotate={isActive ? 90 : 0} style={{ color: '#9ca3af' }}/>}
-              >
-                {chapters.map(chapter => (
-                  <Panel 
-                    key={String(chapter.chapterNo)} 
-                    header={
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                        <Text strong style={{ color: '#1f2937', fontSize: 15 }}>{formatChapterTitle(chapter.chapterNo, chapter.chapterName)}</Text>
-                        <Badge count={chapter.groupCount} style={{ backgroundColor: 'rgba(17, 24, 39, 0.05)', color: '#4b5563', boxShadow: 'none' }} />
-                      </div>
-                    }
-                  >
-                    {loadingPanel === chapter.chapterNo ? (
-                      <div style={{ padding: 16, textAlign: 'center' }}><Spin size="small" /></div>
-                    ) : (
-                      <div style={{ 
-                        border: '2px dashed rgba(156, 163, 175, 0.3)',
-                        borderRadius: '16px',
-                        background: 'rgba(255, 255, 255, 0.4)',
-                        overflow: 'hidden',
-                        position: 'relative'
-                      }}>
-                        {/* Scrollable group list — fixed height shows ~3 items */}
-                        <div
-                          ref={el => { groupListRefs.current[chapter.chapterNo] = el; }}
-                          style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: 6,
-                            height: isMobile ? '210px' : '174px',
-                            overflowY: 'auto', 
-                            padding: '8px',
-                          }}
-                          className="custom-scroll"
-                        >
-                          {(chapterGroups[chapter.chapterNo] || []).map((group, groupIndex, groups) => {
-                            const isActive = currentGroup?.groupId === group.groupId;
-                            const isCompleted = isGroupCompleted(group);
-                            const isUnlocked = isGroupUnlocked(groups, groupIndex);
-                            const progressPercent = Math.min(100, Math.round(((group.learnedCount || 0) / Math.max(1, group.wordCount)) * 100));
-                            const groupNode = (
-                              <div 
-                                key={group.groupId}
-                                ref={isActive ? (el => {
-                                  if (el && !el.dataset.scrolled) {
-                                    setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 100);
-                                    el.dataset.scrolled = "true";
-                                  }
-                                }) : null}
-                                onClick={() => {
-                                  if (isUnlocked) {
-                                    handleGroupSelect(chapter, group);
-                                  }
-                                }}
-                                style={{
-                                  padding: '10px 16px',
-                                  borderRadius: 12,
-                                  background: isActive ? 'rgba(243, 244, 246, 0.8)' : 'transparent',
-                                  border: isActive ? '1px solid rgba(209, 213, 219, 0.6)' : '1px solid transparent',
-                                  cursor: isUnlocked ? 'pointer' : 'not-allowed',
-                                  transition: 'all 0.2s',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  flexShrink: 0,
-                                  opacity: isUnlocked ? 1 : 0.5
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isActive && isUnlocked) e.currentTarget.style.background = 'rgba(255,255,255,0.7)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isActive) e.currentTarget.style.background = 'transparent';
-                                }}
-                              >
-                                <div>
-                                  <div style={{ fontSize: 14, fontWeight: isActive ? 700 : 500, color: isActive ? '#111827' : '#4b5563' }}>
-                                    {group.groupId}
-                                  </div>
-                                  {group.groupTheme && group.groupTheme.length > 20 ? (
-                                    <Tooltip title={group.groupTheme}>
-                                      <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
-                                        {`${group.groupTheme.slice(0, 20)}...`}
-                                      </div>
-                                    </Tooltip>
-                                  ) : (
-                                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
-                                      {group.groupTheme}
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                                  <Text type="secondary" style={{ fontSize: 12, color: isActive ? '#6b7280' : '#9ca3af', fontWeight: 500, lineHeight: 1 }}>
-                                    {isUnlocked ? `${group.wordCount} 词` : <><LockOutlined /> 待解锁</>}
-                                  </Text>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: isActive ? 1 : 0.8 }}>
-                                    <div style={{ width: 36, height: 4, background: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                                      <div style={{ 
-                                        width: `${progressPercent}%`, 
-                                        height: '100%', 
-                                        background: isCompleted ? '#10b981' : '#6366f1', 
-                                        borderRadius: 2 
-                                      }} />
-                                    </div>
-                                    <span style={{ 
-                                      fontSize: 10, 
-                                      color: isCompleted ? '#10b981' : '#6366f1', 
-                                      fontWeight: 700, 
-                                      minWidth: '24px', 
-                                      textAlign: 'right',
-                                      lineHeight: 1
-                                    }}>
-                                      {progressPercent}%
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
+        )}
 
-                            return isUnlocked ? groupNode : (
-                              <Tooltip key={group.groupId} title="完成上一组后解锁；VIP 用户及以上可解锁全部 group。">
-                                {groupNode}
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                        {/* Back-to-top arrow */}
-                        {(chapterGroups[chapter.chapterNo] || []).length > 3 && (
-                          <div
-                            style={{
-                              position: 'sticky',
-                              bottom: 0,
-                              display: 'flex',
-                              justifyContent: 'center',
-                              paddingTop: 4,
-                              paddingBottom: 6,
-                              background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.85) 60%)',
-                              pointerEvents: 'none'
-                            }}
-                          >
-                            <button
-                              title="回到第一个 Group"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const el = groupListRefs.current[chapter.chapterNo];
-                                if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
-                              }}
-                              style={{
-                                pointerEvents: 'auto',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                padding: '3px 12px',
-                                borderRadius: 20,
-                                border: '1px solid rgba(209, 213, 219, 0.6)',
-                                background: 'rgba(255,255,255,0.9)',
-                                color: '#4b5563',
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                                transition: 'all 0.2s'
-                              }}
-                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(243,244,246,1)'; }}
-                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.9)'; }}
-                            >
-                              <VerticalAlignTopOutlined style={{ fontSize: 13 }} />
-                              <span>回顶</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Panel>
-                ))}
-              </Collapse>
-            )}
-          </div>
-        </div>
+        {/* Mobile bottom drawer for curriculum */}
+        {isMobile && (
+          <Drawer
+            placement="bottom"
+            height="75dvh"
+            open={drawerVisible}
+            onClose={() => setDrawerVisible(false)}
+            title={
+              <Text strong style={{ color: '#4b5563', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                课程目录 Curriculum
+              </Text>
+            }
+            bodyStyle={{ padding: '12px 12px 24px 12px', background: '#f9fafb' }}
+          >
+            {renderCurriculum()}
+          </Drawer>
+        )}
 
-        {/* Right Pane: Word Content Canvas (Glassy Container with Sleek New Content) */}
+        {/* Right Pane: Word Content Canvas (Glassy Container) */}
         <div style={{ 
           flex: 1, 
           display: 'flex', 
@@ -550,16 +582,21 @@ const SequentialSelect = () => {
           borderRadius: 24,
           boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
           overflow: 'hidden',
-          minHeight: isMobile ? '62dvh' : undefined
+          minHeight: isMobile ? '70dvh' : undefined
         }}>
           {loadingWords ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Spin size="large" tip="载入词汇中..." />
             </div>
           ) : !currentGroup ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', padding: 24, textAlign: 'center' }}>
               <BookOutlined style={{ fontSize: 48, marginBottom: 16, opacity: 0.5 }} />
-              <Text style={{ fontSize: 16, color: '#6b7280' }}>请在左侧选择一个分组来查看单词</Text>
+              <Text style={{ fontSize: 16, color: '#6b7280', display: 'block', marginBottom: 16 }}>请选择一个分组来查看单词</Text>
+              {isMobile && (
+                <Button type="primary" onClick={() => setDrawerVisible(true)} style={{ background: '#111827', border: 'none' }}>
+                  打开课程目录
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -573,9 +610,31 @@ const SequentialSelect = () => {
                   gap: isMobile ? 14 : 0,
                 }}
               >
-                <div>
-                  <h1 className="sleek-main-title">{currentGroup.groupId}</h1>
-                  <div className="sleek-main-subtitle">{currentGroup.groupTheme} · {words.length} words</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                  <div>
+                    <h1 className="sleek-main-title">{currentGroup.groupId}</h1>
+                    <div className="sleek-main-subtitle">
+                      {isMobile ? currentGroup.groupTheme : `${currentGroup.groupTheme} · ${words.length} words`}
+                    </div>
+                  </div>
+                  {isMobile && (
+                    <Button 
+                      icon={<BookOutlined />} 
+                      onClick={() => setDrawerVisible(true)}
+                      style={{ 
+                        borderRadius: 8, 
+                        fontSize: 13, 
+                        height: 32, 
+                        background: 'rgba(99,102,241,0.08)', 
+                        color: '#4f46e5', 
+                        border: 'none', 
+                        fontWeight: 600,
+                        marginLeft: 12
+                      }}
+                    >
+                      章节目录
+                    </Button>
+                  )}
                 </div>
                 <Button
                   type="primary"
@@ -620,13 +679,16 @@ const SequentialSelect = () => {
                             borderRadius: isActiveWord ? '12px' : '0'
                           }}
                         >
-                          <div className="sleek-word-index">{word.wordNo || (index + 1)}</div>
+                          <span className="sleek-word-index">{index + 1}</span>
                           <div className="sleek-word-info">
-                            <div className="sleek-word-text">{word.word}</div>
-                            <div className="sleek-word-def">{word.explanation}</div>
+                            <span className="sleek-word-text">{word.word}</span>
+                            <span className="sleek-word-def">{word.explanation}</span>
                           </div>
+                          
                           <div>
-                            <span className={`sleek-badge ${statusClass}`}>{statusMeta.label}</span>
+                            <span className={`sleek-badge ${statusClass}`}>
+                              {statusMeta.title}
+                            </span>
                           </div>
                         </div>
                       </motion.div>
@@ -637,7 +699,6 @@ const SequentialSelect = () => {
             </>
           )}
         </div>
-
       </div>
     </motion.div>
   );

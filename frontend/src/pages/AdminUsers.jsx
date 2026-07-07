@@ -381,7 +381,8 @@ const AdminUsers = () => {
           columns={columns}
           dataSource={filteredUsers}
           loading={loading}
-          pagination={{ pageSize: 5, showSizeChanger: false }}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
+          scroll={{ x: 'max-content' }}
           className="premium-users-table"
         />
       </div>

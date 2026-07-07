@@ -499,71 +499,73 @@ const ImageGallery = ({ images = [], currentWord, emptyMode }) => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0px' : '18px' }}>
       {/* Control bar for sidebar (Parallel to WordCard toolbar) */}
-      <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'space-between', gap: 12, minWidth: 0 }}>
-        {!isMobile && (
-          <Button
-            type="text"
-            size="small"
-            onClick={() => setIsMagnifierMode(!isMagnifierMode)}
-            style={{ 
-              color: isMagnifierMode ? '#6366f1' : '#6b7280',
-              fontWeight: 600,
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              paddingLeft: 0,
-              minWidth: 0,
-              flexShrink: 1
-            }}
-          >
-            {isMagnifierMode ? <SearchOutlined /> : <BulbOutlined />}
-            {isMagnifierMode ? `放大镜 (${magnifierScale.toFixed(1)}x)` : '聚光灯'}
-          </Button>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: 10, minWidth: 0, flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
-          {!isMobile && (isMagnifierMode ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>倍数</span>
-              <Slider
-                min={1.1}
-                max={2.5}
-                step={0.1}
-                value={magnifierScale}
-                onChange={setMagnifierScale}
-                style={{ width: 44, margin: 0 }}
-                tooltip={{ formatter: (val) => `${val.toFixed(1)}x` }}
-              />
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>透明度</span>
-              <Slider
-                min={30}
-                max={100}
-                step={5}
-                value={spotlightOpacity}
-                onChange={setSpotlightOpacity}
-                style={{ width: 44, margin: 0 }}
-                tooltip={{ formatter: (val) => `${val}%` }}
-              />
-            </div>
-          ))}
-          <span
-            style={{
-              fontSize: '12px',
-              color: '#6b7280',
-              fontWeight: 700,
-              letterSpacing: 0.3,
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {selectedImage?.label || `配图 ${currentIndex + 1}`} ({currentIndex + 1}/{displayImages.length})
-          </span>
+      {!isMobile && (
+        <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'space-between', gap: 12, minWidth: 0 }}>
+          {!isMobile && (
+            <Button
+              type="text"
+              size="small"
+              onClick={() => setIsMagnifierMode(!isMagnifierMode)}
+              style={{ 
+                color: isMagnifierMode ? '#6366f1' : '#6b7280',
+                fontWeight: 600,
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                paddingLeft: 0,
+                minWidth: 0,
+                flexShrink: 1
+              }}
+            >
+              {isMagnifierMode ? <SearchOutlined /> : <BulbOutlined />}
+              {isMagnifierMode ? `放大镜 (${magnifierScale.toFixed(1)}x)` : '聚光灯'}
+            </Button>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: 10, minWidth: 0, flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
+            {!isMobile && (isMagnifierMode ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>倍数</span>
+                <Slider
+                  min={1.1}
+                  max={2.5}
+                  step={0.1}
+                  value={magnifierScale}
+                  onChange={setMagnifierScale}
+                  style={{ width: 44, margin: 0 }}
+                  tooltip={{ formatter: (val) => `${val.toFixed(1)}x` }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>透明度</span>
+                <Slider
+                  min={30}
+                  max={100}
+                  step={5}
+                  value={spotlightOpacity}
+                  onChange={setSpotlightOpacity}
+                  style={{ width: 44, margin: 0 }}
+                  tooltip={{ formatter: (val) => `${val}%` }}
+                />
+              </div>
+            ))}
+            <span
+              style={{
+                fontSize: '12px',
+                color: '#6b7280',
+                fontWeight: 700,
+                letterSpacing: 0.3,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {selectedImage?.label || `配图 ${currentIndex + 1}`} ({currentIndex + 1}/{displayImages.length})
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <Card
         className="image-gallery-card"

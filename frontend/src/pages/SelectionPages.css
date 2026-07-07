@@ -362,11 +362,15 @@
 @media (max-width: 420px) {
   .sleek-word-row {
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr) !important;
   }
 
   .sleek-word-row > div:last-child {
     grid-column: 2;
+  }
+
+  .sleek-word-index {
+    width: auto !important;
   }
 
   .sleek-badge {
@@ -612,5 +616,37 @@
   }
   .ant-btn {
     font-size: 13px !important;
+  }
+
+  /* Sleek 单词列表移动端自适应优化 */
+  .sleek-main-header {
+    padding: 12px 16px !important;
+  }
+  .sleek-main-title {
+    font-size: 20px !important;
+  }
+  .sleek-main-subtitle {
+    font-size: 12px !important;
+    margin-top: 2px !important;
+  }
+  .sleek-word-list {
+    padding: 4px 16px 16px !important;
+  }
+  .sleek-word-row {
+    padding: 12px 0 !important;
+  }
+  .sleek-word-index {
+    font-size: 12px !important;
+    width: 24px !important;
+  }
+  .sleek-word-text {
+    font-size: 15px !important;
+  }
+  .sleek-word-def {
+    font-size: 12px !important;
+  }
+  .sleek-badge {
+    font-size: 11px !important;
+    padding: 2px 8px !important;
   }
 }

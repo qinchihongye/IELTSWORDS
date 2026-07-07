@@ -132,7 +132,8 @@
 
 .learning-nav__button--primary {
   border: none;
-  color: #fff;  /* 保留白色，因为按钮背景是深色渐变 */
+  color: #fff;
+  /* 保留白色，因为按钮背景是深色渐变 */
   background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
 }
@@ -193,7 +194,7 @@
 
 .modern-image-frame:hover {
   transform: scale(1.01);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.15) !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15) !important;
 }
 
 .gallery-nav-btn {
@@ -215,12 +216,14 @@
   background: transparent !important;
   box-shadow: none !important;
 }
+
 .image-preview-modal-wrap .ant-modal-close {
   color: #fff;
   top: -40px;
   right: -40px;
   font-size: 24px;
 }
+
 .image-preview-modal-wrap .ant-modal-close:hover {
   color: #a855f7;
 }
@@ -279,7 +282,7 @@
   }
 
   .learning-grid {
-    gap: 14px;
+    gap: 6px !important;
   }
 
   .learning-nav,
@@ -308,11 +311,11 @@
   .image-gallery-card.empty-gallery-card .ant-card-body {
     height: 340px !important;
   }
-  
+
   .modern-image-frame {
     height: 100%;
   }
-  
+
   .modern-image-frame img {
     height: 100% !important;
   }
@@ -347,21 +350,32 @@
   .ant-typography {
     font-size: 13px !important;
   }
-  .ant-typography h1, h1.ant-typography {
+
+  .ant-typography h1,
+  h1.ant-typography {
     font-size: 20px !important;
   }
-  .ant-typography h2, h2.ant-typography {
+
+  .ant-typography h2,
+  h2.ant-typography {
     font-size: 18px !important;
   }
-  .ant-typography h3, h3.ant-typography {
+
+  .ant-typography h3,
+  h3.ant-typography {
     font-size: 16px !important;
   }
-  .ant-typography h4, h4.ant-typography {
+
+  .ant-typography h4,
+  h4.ant-typography {
     font-size: 14px !important;
   }
-  .ant-typography h5, h5.ant-typography {
+
+  .ant-typography h5,
+  h5.ant-typography {
     font-size: 13px !important;
   }
+
   .ant-btn {
     font-size: 13px !important;
   }

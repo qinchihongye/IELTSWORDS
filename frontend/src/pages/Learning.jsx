@@ -27,8 +27,12 @@ const getGroupContentKey = (group) => (
 const Learning = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const screens = Grid.useBreakpoint();
-  const isMobile = !screens.md;
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const {
     mode,
     setMode,
@@ -74,6 +78,12 @@ const Learning = () => {
   const [currentStatus, setCurrentStatus] = useState('unlearned');
   const [isMistakeMarked, setIsMistakeMarked] = useState(false);
   const [autoAdvanceSequential, setAutoAdvanceSequential] = useState(true);
+  useEffect(() => {
+    if (isMobile) {
+      setAutoAdvanceSequential(true);
+    }
+  }, [isMobile]);
+
   const [isCompletingGroup, setIsCompletingGroup] = useState(false);
   const completionTimeoutRef = useRef(null);
   const isListMode =
@@ -467,7 +477,7 @@ const Learning = () => {
   return (
     <motion.div className="page-wrapper" style={{ maxWidth: 1200, margin: '0 auto', height: "100%" }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 24 }}>
       <div className="page-subheader" style={{ 
-        marginBottom: 24, 
+        marginBottom: isMobile ? 12 : 24, 
         display: "flex", 
         flexDirection: isMobile ? 'column' : 'row', 
         justifyContent: "space-between", 
@@ -476,55 +486,119 @@ const Learning = () => {
       }}>
         {isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {/* 第一行：第一章 */}
-            {activeMode === 'sequential' && (
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}>
-                {titleText}
-              </div>
-            )}
-            
-            {/* 第二行：group */}
-            <Text style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>{subtitleText}</Text>
-            
-            {/* 第三行：换一组/换单词按钮（移动端隐藏 问 AI 和 进度条） */}
-            {(activeMode === 'random-group' || activeMode === 'random-word') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  {activeMode === 'random-group' && (
-                    <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
-                      换一组
-                    </Button>
-                  )}
-                  {activeMode === 'random-word' && (
-                    <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
-                      换一个单词
+            {(activeMode === 'random-group' || activeMode === 'random-word') ? (
+              <>
+                {/* 随机专属移动端布局 */}
+                {/* 第一行：“第 xx 章” 等标题文本 */}
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}>
+                  {subtitleText}
+                </div>
+                {/* 第二行：“换词/换组” 和 “加入错词” */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: 2 }}>
+                  <Button 
+                    icon={<ReloadOutlined />} 
+                    onClick={handleRefreshContent} 
+                    className="learning-secondary-action" 
+                    style={{ height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {activeMode === 'random-group' ? '换一组' : '换一个单词'}
+                  </Button>
+                  {currentWord && (
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={isMistakeMarked ? <StarFilled /> : <StarOutlined />}
+                      onClick={handleToggleMistakeMark}
+                      style={{
+                        color: isMistakeMarked ? '#f59e0b' : '#6b7280',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px 0'
+                      }}
+                    >
+                      {isMistakeMarked ? '已在错词本' : '加入错词'}
                     </Button>
                   )}
                 </div>
-              </div>
-            )}
+              </>
+            ) : (
+              <>
+                {/* 其它模式的移动端布局保持原样 */}
+                {/* 第一行：第一章 与 加入错词 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  {activeMode === 'sequential' ? (
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}>
+                      {titleText}
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                  {currentWord && (
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={isMistakeMarked ? <StarFilled /> : <StarOutlined />}
+                      onClick={handleToggleMistakeMark}
+                      style={{
+                        color: isMistakeMarked ? '#f59e0b' : '#6b7280',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px 0'
+                      }}
+                    >
+                      {isMistakeMarked ? '已在错词本' : '加入错词'}
+                    </Button>
+                  )}
+                </div>
+                
+                {/* 第二行：group */}
+                <Text style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>{subtitleText}</Text>
+                
+                {/* 第三行：换一组/换单词按钮 */}
+                {(activeMode === 'random-group' || activeMode === 'random-word') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      {activeMode === 'random-group' && (
+                        <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
+                          换一组
+                        </Button>
+                      )}
+                      {activeMode === 'random-word' && (
+                        <Button icon={<ReloadOutlined />} onClick={handleRefreshContent} className="learning-secondary-action" style={{ height: '36px', borderRadius: '10px' }}>
+                          换一个单词
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-            {/* 第四行：返回 */}
-            <div 
-              onClick={handleBackNavigation}
-              style={{ 
-                display: 'flex', alignItems: 'center', gap: '6px', 
-                color: '#9ca3af', cursor: 'pointer', fontSize: '13px', fontWeight: 600, 
-                transition: 'color 0.2s',
-                marginTop: 6
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = '#4f46e5'}
-              onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
-            >
-              <ArrowLeftOutlined />
-              <span>
-                {activeMode === 'sequential'
-                  ? '返回本组单词列表'
-                  : activeMode === 'mistake-book'
-                    ? '返回错词本'
-                    : '返回首页'}
-              </span>
-            </div>
+                {/* 第四行：返回 */}
+                {activeMode !== 'sequential' && (
+                  <div 
+                    onClick={handleBackNavigation}
+                    style={{ 
+                      display: 'flex', alignItems: 'center', gap: '6px', 
+                      color: '#9ca3af', cursor: 'pointer', fontSize: '13px', fontWeight: 600, 
+                      transition: 'color 0.2s',
+                      marginTop: 6
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#4f46e5'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+                  >
+                    <ArrowLeftOutlined />
+                    <span>
+                      {activeMode === 'mistake-book'
+                        ? '返回错词本'
+                        : '返回首页'}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -595,21 +669,21 @@ const Learning = () => {
         <div className="learning-grid">
           <div className="learning-primary">
             {/* Control bar for primary (Parallel to ImageGallery toolbar) */}
-            <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                {activeMode === 'sequential' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>自动跳词</span>
-                    <Switch
-                      size="small"
-                      checked={autoAdvanceSequential}
-                      onChange={setAutoAdvanceSequential}
-                    />
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-                {!isMobile && (
+            {!isMobile && (
+              <div style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  {activeMode === 'sequential' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>自动跳词</span>
+                      <Switch
+                        size="small"
+                        checked={autoAdvanceSequential}
+                        onChange={setAutoAdvanceSequential}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>大小</span>
                     <Slider
@@ -622,27 +696,27 @@ const Learning = () => {
                       tooltip={{ formatter: (val) => `${val}px` }}
                     />
                   </div>
-                )}
-                {currentWord && (
-                  <Button
-                    size="small"
-                    type="text"
-                    icon={isMistakeMarked ? <StarFilled /> : <StarOutlined />}
-                    onClick={handleToggleMistakeMark}
-                    style={{
-                      color: isMistakeMarked ? '#f59e0b' : '#6b7280',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      padding: '4px 8px'
-                    }}
-                  >
-                    {isMistakeMarked ? '已在错词本' : '加入错词'}
-                  </Button>
-                )}
+                  {currentWord && (
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={isMistakeMarked ? <StarFilled /> : <StarOutlined />}
+                      onClick={handleToggleMistakeMark}
+                      style={{
+                        color: isMistakeMarked ? '#f59e0b' : '#6b7280',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px 8px'
+                      }}
+                    >
+                      {isMistakeMarked ? '已在错词本' : '加入错词'}
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <WordCard
               key={currentWord.id}

@@ -139,6 +139,12 @@ const getCroppedImg = (imageSrc, croppedAreaPixels) => {
 };
 
 const AdminBuiltinAvatars = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [avatars, setAvatars] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -151,7 +157,7 @@ const AdminBuiltinAvatars = () => {
   const [filterType, setFilterType] = useState('all'); // 'all', 'default', 'custom', 'vip'
   const [viewMode, setViewMode] = useState('grid'); // 'grid', 'list'
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 24;
+  const pageSize = isMobile ? 4 : 24;
 
   // Cropper states
   const [cropImage, setCropImage] = useState(null);
@@ -473,47 +479,86 @@ const AdminBuiltinAvatars = () => {
       {/* Analytics Stats bar is now the new top container */}
 
       {/* Analytics Stats bar */}
-      <div className="stats-dashboard-grid">
-        <div className="stat-glass-card purple">
-          <div className="stat-icon-wrap">
-            <PictureOutlined />
-          </div>
-          <div className="stat-content">
-            <Text className="stat-label">总头像数量</Text>
-            <Title level={2} className="stat-value">{totalCount}</Title>
+      {isMobile ? (
+        <div className="stat-glass-card combined-mobile-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '6px', borderRadius: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', width: '100%' }}>
+            {/* 1. 总头像数量 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="stat-icon-wrap" style={{ width: '32px', height: '32px', fontSize: '16px', borderRadius: '8px', background: 'rgba(167, 139, 250, 0.1)', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><PictureOutlined /></div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, lineHeight: 1.2 }}>总头像数量</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>{totalCount}</div>
+              </div>
+            </div>
+            {/* 2. 系统默认 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', textAlign: 'right' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, lineHeight: 1.2 }}>系统默认</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>{defaultCount}</div>
+              </div>
+              <div className="stat-icon-wrap" style={{ width: '32px', height: '32px', fontSize: '16px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><SafetyOutlined /></div>
+            </div>
+            {/* 3. 动态内置 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="stat-icon-wrap" style={{ width: '32px', height: '32px', fontSize: '16px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><CloudUploadOutlined /></div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, lineHeight: 1.2 }}>动态内置</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>{customCount}</div>
+              </div>
+            </div>
+            {/* 4. VIP 尊享 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', textAlign: 'right' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, lineHeight: 1.2 }}>VIP 尊享</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>{vipCount}</div>
+              </div>
+              <div className="stat-icon-wrap" style={{ width: '32px', height: '32px', fontSize: '16px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><CrownOutlined /></div>
+            </div>
           </div>
         </div>
+      ) : (
+        <div className="stats-dashboard-grid">
+          <div className="stat-glass-card purple">
+            <div className="stat-icon-wrap">
+              <PictureOutlined />
+            </div>
+            <div className="stat-content">
+              <Text className="stat-label">总头像数量</Text>
+              <Title level={2} className="stat-value">{totalCount}</Title>
+            </div>
+          </div>
 
-        <div className="stat-glass-card indigo">
-          <div className="stat-icon-wrap">
-            <SafetyOutlined />
+          <div className="stat-glass-card indigo">
+            <div className="stat-icon-wrap">
+              <SafetyOutlined />
+            </div>
+            <div className="stat-content">
+              <Text className="stat-label">系统默认</Text>
+              <Title level={2} className="stat-value">{defaultCount}</Title>
+            </div>
           </div>
-          <div className="stat-content">
-            <Text className="stat-label">系统默认</Text>
-            <Title level={2} className="stat-value">{defaultCount}</Title>
-          </div>
-        </div>
 
-        <div className="stat-glass-card emerald">
-          <div className="stat-icon-wrap">
-            <CloudUploadOutlined />
+          <div className="stat-glass-card emerald">
+            <div className="stat-icon-wrap">
+              <CloudUploadOutlined />
+            </div>
+            <div className="stat-content">
+              <Text className="stat-label">动态内置</Text>
+              <Title level={2} className="stat-value">{customCount}</Title>
+            </div>
           </div>
-          <div className="stat-content">
-            <Text className="stat-label">动态内置</Text>
-            <Title level={2} className="stat-value">{customCount}</Title>
-          </div>
-        </div>
 
-        <div className="stat-glass-card gold">
-          <div className="stat-icon-wrap">
-            <CrownOutlined />
-          </div>
-          <div className="stat-content">
-            <Text className="stat-label">VIP 尊享</Text>
-            <Title level={2} className="stat-value">{vipCount}</Title>
+          <div className="stat-glass-card gold">
+            <div className="stat-icon-wrap">
+              <CrownOutlined />
+            </div>
+            <div className="stat-content">
+              <Text className="stat-label">VIP 尊享</Text>
+              <Title level={2} className="stat-value">{vipCount}</Title>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Upload Drag Area & Grid Split */}
       <div className="admin-avatars-workspace">
@@ -535,7 +580,7 @@ const AdminBuiltinAvatars = () => {
                   </p>
                   <h3 className="dragger-title">普通文件上传</h3>
                   <p className="dragger-description">
-                    拖拽或点击选择单张/多张图片
+                    {isMobile ? "点击选择上传多张" : "拖拽或点击选择单张/多张图片"}
                   </p>
                 </div>
               </Upload.Dragger>
@@ -545,14 +590,15 @@ const AdminBuiltinAvatars = () => {
               <div
                 className="premium-dragger folder-dragger"
                 onClick={handleAutoPresetScan}
+                style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}
               >
-                <div className="dragger-interior">
-                  <p className="dragger-icon-pulse">
+                <div className="dragger-interior" style={{ textAlign: 'center', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <p className="dragger-icon-pulse" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
                     {uploading ? <Spin size="large" /> : <AppstoreOutlined style={{ color: '#10b981' }} />}
                   </p>
                   <h3 className="dragger-title" style={{ color: '#10b981' }}>从【预设头像】文件夹上传</h3>
                   <p className="dragger-description">
-                    自动后端扫描并连续裁剪 (读取品种与名称)
+                    {isMobile ? "快速扫描并连续剪裁" : "自动后端扫描并连续裁剪 (读取品种与名称)"}
                   </p>
                 </div>
               </div>
@@ -703,7 +749,7 @@ const AdminBuiltinAvatars = () => {
                 columns={columns}
                 rowKey="key"
                 pagination={false}
-                scroll={{ y: TABLE_SCROLL_BODY_HEIGHT }}
+                scroll={{ y: TABLE_SCROLL_BODY_HEIGHT, x: 'max-content' }}
                 className="premium-glass-table"
                 rowClassName={(record) => record.is_hardcoded ? 'table-row-default' : 'table-row-custom'}
               />
@@ -830,7 +876,7 @@ const AdminBuiltinAvatars = () => {
                 <Title level={4} style={{ margin: 0, color: '#1e293b', fontWeight: 700 }}>
                   头像装饰挂件
                 </Title>
-                <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: '16px' }}>
+                <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: '6px' }}>
                   为该头像搭配不同的平台尊享边框，测试渲染效果
                 </Text>
 
@@ -863,7 +909,7 @@ const AdminBuiltinAvatars = () => {
 
               {/* Mockups section */}
               <div className="sandbox-mockups-list">
-                <Title level={4} style={{ margin: 0, color: '#1e293b', fontWeight: 700, marginBottom: '16px' }}>
+                <Title level={4} style={{ margin: 0, color: '#1e293b', fontWeight: 700, marginBottom: '6px' }}>
                   真实场景高保真预览 (Mockups)
                 </Title>
 
@@ -1074,15 +1120,15 @@ const css = `
   cursor: pointer;
 }
 
-.premium-dragger.ant-upload-drag {
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px dashed rgba(99, 102, 241, 0.22);
-  border-radius: 20px;
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+.premium-dragger.ant-upload-drag, .folder-dragger {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 2px dashed rgba(99, 102, 241, 0.22) !important;
+  border-radius: 20px !important;
+  backdrop-filter: blur(10px) !important;
+  transition: all 0.3s ease !important;
 }
 
-.premium-dragger.ant-upload-drag:hover {
+.premium-dragger.ant-upload-drag:hover, .folder-dragger:hover {
   border-color: rgba(99, 102, 241, 0.5) !important;
   background: rgba(255, 255, 255, 0.85);
 }
@@ -1885,7 +1931,75 @@ const css = `
     max-width: none;
   }
   .premium-upload-split-container {
-    flex-direction: column;
+    flex-direction: row;
+    gap: 12px;
+    margin-bottom: 12px !important;
+  }
+  /* Force both upload cards to be exactly 105px tall on mobile */
+  .premium-dragger.ant-upload-drag, 
+  .folder-dragger {
+    border-radius: 12px !important;
+    height: 105px !important;
+  }
+  /* Reset Antd nested container paddings and heights on mobile */
+  .premium-dragger .ant-upload {
+    padding: 0 !important;
+    height: 100% !important;
+  }
+  .premium-dragger .ant-upload-btn {
+    padding: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .premium-dragger .ant-upload-drag-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+  /* Center and align dragger interior contents */
+  .dragger-interior {
+    padding: 4px 6px !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+  /* Ensure dragger typography fits on narrow mobile rows & is centered */
+  .premium-dragger .dragger-title,
+  .folder-dragger .dragger-title {
+    font-size: 11px !important;
+    margin-bottom: 1px !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
+    width: 100% !important;
+  }
+  .premium-dragger .dragger-description,
+  .folder-dragger .dragger-description {
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-align: center !important;
+    width: 100% !important;
+  }
+  .premium-dragger .dragger-icon-pulse,
+  .folder-dragger .dragger-icon-pulse {
+    font-size: 18px !important;
+    margin-bottom: 4px !important;
+    text-align: center !important;
+    width: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
   }
 }
 

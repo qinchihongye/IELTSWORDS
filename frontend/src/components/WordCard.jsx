@@ -220,46 +220,48 @@ const WordCardContent = ({ word, learningStatus, onSwipeLeft, onSwipeRight, onSt
                 overflow: 'hidden'
               }}
             >
-              {/* === X-Ray Magic Lens Layer === */}
-              <motion.div 
-                style={{ 
-                  position: 'absolute', inset: 0, zIndex: 10, background: '#111827', 
-                  clipPath, pointerEvents: 'none',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px'
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  {/* 占位与正面 h1 完全等高 (92px + 16px margin) 确保音标水平线一致 */}
-                  <div style={{ minHeight: '92px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ fontSize: '28px', color: '#ffffff', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, letterSpacing: '1px', whiteSpace: 'pre-line' }}>
-                      {word.explanation}
+              {/* === X-Ray Magic Lens Layer (Desktop Only) === */}
+              {!isMobile && (
+                <motion.div 
+                  style={{ 
+                    position: 'absolute', inset: 0, zIndex: 10, background: '#111827', 
+                    clipPath, pointerEvents: 'none',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px'
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    {/* 占位与正面 h1 完全等高 (92px + 16px margin) 确保音标水平线一致 */}
+                    <div style={{ minHeight: '92px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ fontSize: '28px', color: '#ffffff', fontWeight: 700, textAlign: 'center', lineHeight: 1.5, letterSpacing: '1px', whiteSpace: 'pre-line' }}>
+                        {word.explanation}
+                      </div>
+                    </div>
+                    
+                    {/* 镜像音标 (反色变白) */}
+                    <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {word.phonetics_uk && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f3f4f6' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px' }}>UK</span>
+                          <span style={{ fontSize: '16px', fontFamily: 'serif', letterSpacing: '0.5px' }}>/{word.phonetics_uk.replace(/\//g, '')}/</span>
+                          <SoundOutlined style={{ fontSize: '13px' }} />
+                        </div>
+                      )}
+                      {word.phonetics_us && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f3f4f6' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px' }}>US</span>
+                          <span style={{ fontSize: '16px', fontFamily: 'serif', letterSpacing: '0.5px' }}>/{word.phonetics_us.replace(/\//g, '')}/</span>
+                          <SoundOutlined style={{ fontSize: '13px' }} />
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  {/* 镜像音标 (反色变白) */}
-                  <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {word.phonetics_uk && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f3f4f6' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px' }}>UK</span>
-                        <span style={{ fontSize: '16px', fontFamily: 'serif', letterSpacing: '0.5px' }}>/{word.phonetics_uk.replace(/\//g, '')}/</span>
-                        <SoundOutlined style={{ fontSize: '13px' }} />
-                      </div>
-                    )}
-                    {word.phonetics_us && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f3f4f6' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.5px' }}>US</span>
-                        <span style={{ fontSize: '16px', fontFamily: 'serif', letterSpacing: '0.5px' }}>/{word.phonetics_us.replace(/\//g, '')}/</span>
-                        <SoundOutlined style={{ fontSize: '13px' }} />
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Mirrored Hint (Translated) */}
-                <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, textAlign: 'center', color: '#9ca3af', fontSize: '12px', fontWeight: 600, letterSpacing: '2px' }}>
-                  点击或按空格键翻转
-                </div>
-              </motion.div>
+                  {/* Mirrored Hint (Translated) */}
+                  <div style={{ position: 'absolute', bottom: 24, left: 0, right: 0, textAlign: 'center', color: '#9ca3af', fontSize: '12px', fontWeight: 600, letterSpacing: '2px' }}>
+                    点击或按空格键翻转
+                  </div>
+                </motion.div>
+              )}
 
               {/* Top Left: Index */}
               {word.wordNo && (
