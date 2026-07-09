@@ -74,7 +74,7 @@ data/uploads/
 预设头像/
 
 # Tools & runtime
-.run/
+.run/1
 .codebuddy/
 .env_production
 词汇真经_new_group.xlsx
